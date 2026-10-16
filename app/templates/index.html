@@ -4,6 +4,33 @@
 <div class="space-y-6">
 
     <!-- ========================================================================= -->
+    <!-- QUICK MODE SWITCHER: Fast 1-Click Toggle between Web Player and M3U Links -->
+    <!-- ========================================================================= -->
+    <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2.5 rounded-2xl shadow-md">
+        <!-- Segmented Mode Toggle Buttons -->
+        <div class="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button id="quick-toggle-player" onclick="switchTab('player')" class="quick-mode-btn active flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                📺 Live Web TV Player
+            </button>
+            <button id="quick-toggle-links" onclick="switchTab('links')" class="quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                🔗 Copy M3U &amp; EPG Links
+            </button>
+        </div>
+
+        <!-- Direct Quick Copy Pills -->
+        <div class="flex items-center gap-2">
+            <button class="btn-copy btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5" data-copy-url="{{ base_url }}/playlist.m3u">
+                <span>📋 Copy M3U</span>
+            </button>
+            <button class="btn-copy btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5" data-copy-url="{{ base_url }}/epg.xml">
+                <span>📅 Copy EPG</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- TAB 1: LIVE TV WEB PLAYER -->
     <!-- ========================================================================= -->
     <div id="tab-player" class="tab-content">
@@ -33,6 +60,17 @@
                     </div>
                 </div>
 
+                <!-- Replay Notification Banner (Visible when viewing archive recording) -->
+                <div id="active-replay-banner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-300">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                        <span>Watching Catchup Archive: <strong id="replay-program-name" class="text-white">Program Name</strong></span>
+                    </div>
+                    <button id="btn-return-live" class="btn-primary text-xs py-1 px-3">
+                        Return to Live TV
+                    </button>
+                </div>
+
                 <!-- Stream Controls & Quality Selector Toolbar -->
                 <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
                     <div class="flex items-center gap-3">
@@ -54,6 +92,10 @@
                     </div>
 
                     <div class="flex items-center gap-2">
+                        <button id="btn-toggle-catchup" class="btn-secondary text-xs px-3 py-1.5 hidden" title="View past programs">
+                            <svg class="w-4 h-4 mr-1 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            Catchup Archive
+                        </button>
                         <button id="btn-reload-stream" class="btn-secondary text-xs px-3 py-1.5" title="Reload current stream">
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             Reload
@@ -62,6 +104,20 @@
                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
                             Fullscreen
                         </button>
+                    </div>
+                </div>
+
+                <!-- Catchup Replay Drawer / Schedule List (Toggled via btn-toggle-catchup) -->
+                <div id="catchup-drawer" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 animate-fade-in shadow-xl">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-white uppercase tracking-wider">⏪ 7-Day Catchup Replay Schedule</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full">Archive Available</span>
+                        </div>
+                        <button id="btn-close-catchup" class="text-slate-400 hover:text-white text-xs">Close &times;</button>
+                    </div>
+                    <div id="catchup-programs-list" class="max-h-64 overflow-y-auto space-y-2 pr-1">
+                        <!-- Populated via JS -->
                     </div>
                 </div>
 

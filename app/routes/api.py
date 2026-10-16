@@ -159,6 +159,41 @@ def get_channels_api() -> Dict[str, Any]:
     }
 
 
+@router.get("/channel/{channel_id}/epg")
+def get_channel_epg_schedule(channel_id: int) -> Dict[str, Any]:
+    """Returns full program schedule with catchup availability for a channel."""
+    if not config.is_logged:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    data = get_cached_channels(need_epg=True)
+    if not data or data.get("status") != "OK":
+        raise HTTPException(status_code=502, detail="Failed to fetch EPG")
+
+    now = int(time.time())
+    for ch in data.get("list", []):
+        if ch.get("id") == channel_id:
+            programs = []
+            for p in ch.get("epg", []):
+                programs.append({
+                    "id": p.get("id"),
+                    "title": p.get("text"),
+                    "start": p.get("time_start"),
+                    "stop": p.get("time_stop"),
+                    "available": p.get("available", False),
+                    "is_past": p.get("time_stop", 0) <= now,
+                    "is_current": p.get("time_start", 0) <= now < p.get("time_stop", 0),
+                    "can_replay": bool(ch.get("catchup") and p.get("available") and p.get("id")),
+                })
+            return {
+                "channel_id": channel_id,
+                "name": ch.get("name"),
+                "catchup": ch.get("catchup", False),
+                "catchup_duration": ch.get("catchup_duration", 7),
+                "programs": programs
+            }
+    raise HTTPException(status_code=404, detail="Channel not found")
+
+
 @router.get("/stream/{channel_id}/info")
 def get_stream_info_api(channel_id: int, epg_id: Optional[int] = None) -> Dict[str, Any]:
     """

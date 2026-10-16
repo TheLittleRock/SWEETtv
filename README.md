@@ -29,14 +29,40 @@ Designed for deployment on home servers, NAS, Docker, or Portainer, and optimize
 
 ---
 
-## 📸 Web Dashboard Preview
+## 📸 Web Dashboard & Fast Mode Toggle
 
-The web interface accessible on `http://<server-ip>:5000` features:
-1. **Live TV Player**: Stream channels directly in any browser with instant channel zapping and quality switching.
-2. **Playlists & EPG Hub**: One-click copy buttons for M3U and XMLTV links.
-3. **Status & Diagnostics**: Real-time token countdown, channel counts, and virtual MAC/UUID display.
-4. **Settings**: Switch region/language (`cs`, `sk`, `hu`, `pl`, `ro`, `uk`), set external domain, or choose default stream quality.
-5. **Interactive Setup Guides**: Clear instructions for all major IPTV platforms.
+The web dashboard at `http://<server-ip>:5000` is built for maximum speed and simplicity:
+
+- **1-Click Quick Switcher**: Toggle instantly between **📺 Live Web TV Player** and **🔗 Copy M3U & EPG Links** with one click.
+- **Top Quick Copy Pills**: Copy `playlist.m3u` and `epg.xml` URLs to clipboard directly from the header without leaving your current view.
+- **7-Day Catchup Drawer**: Click **Catchup Archive** on any channel to view past shows and replay them instantly.
+- **Live Video Player**: Hardware-accelerated Hls.js stream player with adaptive multi-bitrate and quality selectors (`best`, `1080p`, `720p`).
+- **Real-Time Status**: Displays connection health, token countdown, active region, and device ID.
+- **Settings & Region**: Change region (`cs`, `sk`, `hu`, `pl`, `ro`, `uk`), set external domain, or change default stream quality.
+
+---
+
+## ⏪ 7-Day EPG Catchup (Archive Replay)
+
+Sweet.tv records broadcasts for up to 7 days on supported channels. This server provides full catchup playback support:
+
+### How It Works
+
+1. **In the Web TV Player**:
+   - Channels with catchup display a green **Catchup** badge.
+   - Click the **⏪ Catchup Archive** button above the player to open the slide-out schedule drawer.
+   - Shows from the past 7 days are displayed with friendly timestamps (e.g. *Today 14:00 - 15:30*, *Yesterday 20:00 - 21:45*).
+   - Click **Watch** on any show to start streaming the recorded broadcast.
+   - An amber notification banner confirms archive playback; click **Return to Live TV** at any time to switch back to the live broadcast.
+
+2. **In External IPTV Apps (Kodi, TiviMate, IPTVnator)**:
+   - The M3U playlist automatically includes standard IPTV catchup headers:
+     ```m3u
+     #EXTINF:-1 tvg-id="123" catchup="vod" catchup-days="7" catchup-source="http://<server-ip>:5000/stream/123/{catchup-id}.m3u8", ČT1 HD
+     http://<server-ip>:5000/stream/123.m3u8
+     ```
+   - Also supports timestamp-based queries automatically for apps that use UTC parameters:
+     `/stream/{channel_id}.m3u8?utc={utc}` or `?start={start}`.
 
 ---
 
@@ -72,10 +98,66 @@ Open your browser at **`http://localhost:5000`**.
 
 ---
 
-## 🐳 Docker & Portainer Deployment Guide
+## 🐳 Portainer Deployment & Automatic GitHub Compilation Guide
 
-### Using Docker Compose
-Create a `docker-compose.yml` file:
+### How Portainer Builds Directly from GitHub (No Pre-built Image Required)
+
+A common question is: **"Does Portainer automatically download and compile the Docker image from GitHub?"**
+
+**Yes, absolutely!** Portainer's **Repository** build method handles the entire build process natively on your machine:
+1. When you point Portainer to `https://github.com/TheLittleRock/SWEETtv.git`, Portainer clones the latest code from GitHub to your host.
+2. It detects the `Dockerfile` and `docker-compose.yml`.
+3. Portainer invokes `docker compose build` locally: it pulls the lightweight `python:3.11-slim` base image, installs dependencies from `requirements.txt`, copies the application files, and creates the container image.
+4. It starts the container and mounts the persistent volume `sweettv_data` (which preserves your login tokens and settings forever, even when updating).
+
+```
+[GitHub Repo] ────(Portainer Clones)────► [Local Docker Engine]
+                                                  │
+                                          (docker compose build)
+                                                  │
+                                                  ▼
+                                      [Compiled sweettv-proxy Image]
+                                                  │
+                                                  ▼
+                                      [Running Container :5000]
+                                                  │
+                                                  ▼
+                                      [Named Volume: sweettv_data]
+```
+
+---
+
+### Step-by-Step Portainer Installation
+
+#### Method 1: Build Directly from GitHub Repository (Recommended)
+
+1. Open your **Portainer** dashboard.
+2. Navigate to **Stacks** &rarr; **Add stack**.
+3. Set the **Name**: `sweettv`.
+4. Under **Build method**, select **Repository**.
+5. Fill in the repository details:
+   - **Repository URL**: `https://github.com/TheLittleRock/SWEETtv.git`
+   - **Repository reference**: `refs/heads/main` (or leave default `main`)
+   - **Compose path**: `docker-compose.yml`
+6. (Optional) **Automatic updates**:
+   - Turn **ON** **Automatic updates**.
+   - Choose **Polling** (e.g. check every 15 minutes) or **Webhook** (copy the Portainer webhook URL and paste it into your GitHub repository settings under Webhooks).
+   - Whenever you push or update the repository, Portainer will automatically pull the changes, recompile the Docker image, and restart the container seamlessly!
+7. Under **Environment variables**, click **Add environment variable**:
+   - `EXTERNAL_URL` = `https://tv.yourdomain.com` *(if using Nginx Proxy Manager or public domain)*
+   - `SWEETTV_COUNTRY_CODE` = `cs` *(or `sk`, `hu`, `pl`, `ro`, `uk`)*
+   - `DEFAULT_QUALITY` = `best` *(or `auto`, `1080p`, `720p`)*
+8. Click **Deploy the stack**.
+9. Portainer will clone, compile, and start the application. Once finished, visit `http://<your-server-ip>:5000` to activate your Sweet.tv account.
+
+---
+
+#### Method 2: Web Editor (Pasting docker-compose.yml)
+
+If your Docker server has cloned the repository locally or you prefer pasting the compose specification:
+
+1. In Portainer, go to **Stacks** &rarr; **Add stack**.
+2. Select **Web editor** and paste:
 
 ```yaml
 version: '3.8'
@@ -84,7 +166,7 @@ services:
   sweettv:
     image: sweettv-proxy:latest
     build:
-      context: .
+      context: https://github.com/TheLittleRock/SWEETtv.git#main
       dockerfile: Dockerfile
     container_name: sweettv-proxy
     restart: unless-stopped
@@ -93,10 +175,10 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5000
-      - SWEETTV_COUNTRY_CODE=cs            # cs (CZ), sk (SK), hu (HU), pl (PL), uk (UA), ro (RO)
-      - EXTERNAL_URL=                      # e.g. https://tv.yourdomain.com (set if using NPM)
+      - SWEETTV_COUNTRY_CODE=cs            # cs, sk, hu, pl, uk, ro
+      - EXTERNAL_URL=                      # e.g. https://tv.yourdomain.com (optional)
       - DEFAULT_QUALITY=auto               # 'auto', 'best', '1080p', '720p'
-      - DIRECT_REDIRECT=true               # Direct 302 CDN redirect (recommended)
+      - DIRECT_REDIRECT=true
       - TZ=Europe/Prague
     volumes:
       - sweettv_data:/app/data
@@ -112,19 +194,7 @@ volumes:
     name: sweettv_data
 ```
 
-Start the container:
-```bash
-docker compose up -d --build
-```
-
-### Deploying via Portainer
-1. Log into your **Portainer** dashboard.
-2. Go to **Stacks** &rarr; **Add stack**.
-3. Name the stack: `sweettv-proxy`.
-4. Choose **Web editor** and paste the `docker-compose.yml` contents above.
-5. (Optional) In Environment variables, set `EXTERNAL_URL` if you already have your NPM domain.
-6. Click **Deploy the stack**.
-7. Access `http://<server-ip>:5000` to connect your account. All tokens are persisted in the `sweettv_data` volume across updates.
+3. Click **Deploy the stack**. Docker will build the image directly from the GitHub URL context.
 
 ---
 

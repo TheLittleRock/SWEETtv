@@ -2,7 +2,7 @@
  * Sweet.tv IPTV Proxy Server & Web TV Dashboard Controller
  */
 
-// Tab Switching
+// Tab Switching with Quick Mode Switcher integration
 function switchTab(tabName) {
     document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"));
     const target = document.getElementById(`tab-${tabName}`);
@@ -10,6 +10,7 @@ function switchTab(tabName) {
         target.classList.remove("hidden");
     }
 
+    // Top Navigation Tabs
     document.querySelectorAll(".nav-tab, .mobile-nav-tab").forEach(tab => {
         if (tab.getAttribute("data-tab") === tabName) {
             tab.classList.add("active");
@@ -17,6 +18,22 @@ function switchTab(tabName) {
             tab.classList.remove("active");
         }
     });
+
+    // 1-Click Quick Mode Switcher
+    const qPlayer = document.getElementById("quick-toggle-player");
+    const qLinks = document.getElementById("quick-toggle-links");
+    if (qPlayer && qLinks) {
+        if (tabName === "player") {
+            qPlayer.className = "quick-mode-btn active flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm";
+            qLinks.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+        } else if (tabName === "links") {
+            qPlayer.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+            qLinks.className = "quick-mode-btn active flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-emerald-400 border border-slate-700 shadow-sm";
+        } else {
+            qPlayer.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+            qLinks.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+        }
+    }
 
     if (history.pushState) {
         history.pushState(null, null, `#${tabName}`);
@@ -37,10 +54,7 @@ function showToast(message, type = "info") {
             : "bg-slate-900 text-slate-200 border-slate-700"
     }`;
 
-    toast.innerHTML = `
-        <span>${message}</span>
-    `;
-
+    toast.innerHTML = `<span>${message}</span>`;
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -105,7 +119,7 @@ async function updateSystemStatus() {
     }
 }
 
-// Timer Countdown
+// Countdown loop
 setInterval(() => {
     if (tokenRemaining > 0) {
         tokenRemaining--;
@@ -173,6 +187,24 @@ function closeConnectModal() {
     }
 }
 
+// Copy to Clipboard Helper
+function copyText(text, btnElement) {
+    navigator.clipboard.writeText(text).then(() => {
+        const originalText = btnElement ? btnElement.innerHTML : "";
+        if (btnElement) {
+            btnElement.textContent = "Copied!";
+            btnElement.classList.add("bg-emerald-600");
+        }
+        showToast("URL copied to clipboard!", "success");
+        setTimeout(() => {
+            if (btnElement) {
+                btnElement.innerHTML = originalText;
+                btnElement.classList.remove("bg-emerald-600");
+            }
+        }, 2000);
+    });
+}
+
 // Initialize on DOM Ready
 document.addEventListener("DOMContentLoaded", () => {
     // Tab event listeners
@@ -191,22 +223,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Copy Buttons
+    // Universal Copy Buttons (handles both input targets and direct URLs)
     document.querySelectorAll(".btn-copy").forEach(btn => {
         btn.addEventListener("click", () => {
+            const directUrl = btn.getAttribute("data-copy-url");
+            if (directUrl) {
+                copyText(directUrl, btn);
+                return;
+            }
             const targetId = btn.getAttribute("data-target");
             const input = document.getElementById(targetId);
             if (input) {
-                navigator.clipboard.writeText(input.value).then(() => {
-                    const originalText = btn.textContent;
-                    btn.textContent = "Copied!";
-                    btn.classList.add("bg-emerald-600");
-                    showToast("URL copied to clipboard!", "success");
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.classList.remove("bg-emerald-600");
-                    }, 2000);
-                });
+                copyText(input.value, btn);
             }
         });
     });

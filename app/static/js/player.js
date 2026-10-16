@@ -1,5 +1,6 @@
 /**
  * Sweet.tv Web TV Player & Channel Browser Controller
+ * Includes Multi-bitrate HLS Player, 7-Day Catchup Replay, and Search
  */
 
 let hlsInstance = null;
@@ -7,6 +8,7 @@ let currentChannel = null;
 let allChannels = [];
 let activeCategory = "all";
 let currentVariants = [];
+let currentReplayProgram = null;
 
 // DOM References
 const videoEl = document.getElementById("tv-player");
@@ -18,11 +20,37 @@ const channelsListEl = document.getElementById("channels-list");
 const categoryPillsEl = document.getElementById("category-pills-container");
 const searchInput = document.getElementById("channel-search-input");
 
+// Catchup & Replay DOM References
+const catchupDrawer = document.getElementById("catchup-drawer");
+const catchupBtn = document.getElementById("btn-toggle-catchup");
+const catchupListEl = document.getElementById("catchup-programs-list");
+const catchupCloseBtn = document.getElementById("btn-close-catchup");
+const replayBanner = document.getElementById("active-replay-banner");
+const replayProgName = document.getElementById("replay-program-name");
+const returnLiveBtn = document.getElementById("btn-return-live");
+
 // Format Unix Timestamp to HH:MM
 function formatTimeHourMin(unixTimestamp) {
     if (!unixTimestamp) return "--:--";
     const d = new Date(unixTimestamp * 1000);
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+// Format Unix Timestamp to Friendly Date
+function formatProgrammeDate(unixTimestamp) {
+    if (!unixTimestamp) return "";
+    const d = new Date(unixTimestamp * 1000);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    if (d.toDateString() === today.toDateString()) {
+        return "Today";
+    } else if (d.toDateString() === yesterday.toDateString()) {
+        return "Yesterday";
+    } else {
+        return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
 }
 
 // Format Bitrate to Mbps
@@ -154,6 +182,7 @@ function renderChannels() {
 // Select and Play Channel
 async function selectChannel(channel) {
     currentChannel = channel;
+    currentReplayProgram = null;
 
     // Update active highlight
     document.querySelectorAll(".channel-card").forEach(c => {
@@ -203,6 +232,21 @@ async function selectChannel(channel) {
         }
     }
 
+    // Toggle Catchup Archive button visibility
+    if (catchupBtn) {
+        if (channel.catchup) {
+            catchupBtn.classList.remove("hidden");
+        } else {
+            catchupBtn.classList.add("hidden");
+            if (catchupDrawer) catchupDrawer.classList.add("hidden");
+        }
+    }
+
+    // If catchup drawer is currently open and channel supports it, refresh drawer schedule
+    if (catchupDrawer && !catchupDrawer.classList.contains("hidden") && channel.catchup) {
+        loadCatchupSchedule(channel.id);
+    }
+
     if (progTitleEl) {
         if (channel.current_programme) {
             const cp = channel.current_programme;
@@ -228,14 +272,15 @@ async function selectChannel(channel) {
     // Inspect stream info
     fetchStreamInfo(channel.id);
 
-    // Play stream
+    // Play live channel stream
     playCurrentChannelStream();
 }
 
 // Fetch Stream Variants & Codecs
-async function fetchStreamInfo(channelId) {
+async function fetchStreamInfo(channelId, epgId = null) {
     try {
-        const res = await fetch(`/api/stream/${channelId}/info`);
+        const query = epgId ? `?epg_id=${epgId}` : "";
+        const res = await fetch(`/api/stream/${channelId}/info${query}`);
         if (!res.ok) return;
         const data = await res.json();
 
@@ -280,16 +325,22 @@ function updateQualitySelectOptions(variants) {
     }
 }
 
-// Play Channel Stream using HLS Proxy
-function playCurrentChannelStream() {
-    if (!currentChannel || !videoEl) return;
+// Low-level HLS loader helper
+function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
+    if (!videoEl) return;
 
     if (placeholderEl) placeholderEl.classList.add("hidden");
     if (loadingEl) loadingEl.classList.remove("hidden");
 
-    const quality = qualitySelect ? qualitySelect.value : "auto";
-    // Target the clean, standard HLS proxy endpoint
-    const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}`;
+    // Manage Replay Notification Banner
+    if (replayBanner) {
+        if (isCatchup) {
+            replayBanner.classList.remove("hidden");
+            if (replayProgName) replayProgName.textContent = replayTitle;
+        } else {
+            replayBanner.classList.add("hidden");
+        }
+    }
 
     if (Hls.isSupported()) {
         if (hlsInstance) {
@@ -298,7 +349,7 @@ function playCurrentChannelStream() {
 
         hlsInstance = new Hls({
             enableWorker: true,
-            lowLatencyMode: true,
+            lowLatencyMode: !isCatchup, // Disable low latency mode for catchup archive VODs
             backBufferLength: 60,
             maxBufferLength: 30,
             maxMaxBufferLength: 60,
@@ -351,8 +402,129 @@ function playCurrentChannelStream() {
     }
 }
 
+// Play Live Channel Stream using HLS Proxy
+function playCurrentChannelStream() {
+    if (!currentChannel) return;
+    currentReplayProgram = null;
+
+    const quality = qualitySelect ? qualitySelect.value : "auto";
+    const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}`;
+
+    loadHlsStream(streamEndpoint, false);
+}
+
+// Play Catchup Replay Archive Program
+function playCatchupProgram(prog) {
+    if (!currentChannel || !prog) return;
+    currentReplayProgram = prog;
+
+    const quality = qualitySelect ? qualitySelect.value : "auto";
+    const streamEndpoint = `/stream/${currentChannel.id}/${prog.id}.m3u8?quality=${quality}`;
+    const replayTitle = `${prog.title} (${formatProgrammeDate(prog.start)} ${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)})`;
+
+    loadHlsStream(streamEndpoint, true, replayTitle);
+
+    if (typeof showToast === 'function') {
+        showToast(`Playing Catchup Archive: ${prog.title}`, "info");
+    }
+
+    // Scroll smoothly to player
+    videoEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Load and Render 7-Day Catchup Replay Schedule
+async function loadCatchupSchedule(channelId) {
+    if (!catchupListEl) return;
+
+    catchupListEl.innerHTML = `
+        <div class="flex items-center justify-center py-8 text-xs text-slate-400 gap-2">
+            <div class="inline-block animate-spin rounded-full h-4 w-4 border-2 border-cyan-400 border-t-transparent"></div>
+            <span>Loading 7-day replay archive schedule...</span>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/channel/${channelId}/epg`);
+        if (!res.ok) {
+            catchupListEl.innerHTML = `
+                <div class="text-center py-6 text-xs text-slate-500">
+                    Failed to load EPG replay schedule.
+                </div>
+            `;
+            return;
+        }
+
+        const data = await res.json();
+        const programs = data.programs || [];
+
+        // Filter replayable past programs
+        const replayable = programs.filter(p => p.can_replay && p.is_past);
+
+        // Sort descending: most recent first
+        replayable.sort((a, b) => b.start - a.start);
+
+        if (replayable.length === 0) {
+            catchupListEl.innerHTML = `
+                <div class="text-center py-6 text-xs text-slate-500">
+                    No replayable archive recordings available for this channel right now.
+                </div>
+            `;
+            return;
+        }
+
+        catchupListEl.innerHTML = replayable.map(prog => {
+            const dateStr = formatProgrammeDate(prog.start);
+            const timeRange = `${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)}`;
+            const isCurrentlyPlayingThis = currentReplayProgram && currentReplayProgram.id === prog.id;
+
+            return `
+                <div class="catchup-item flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer group ${
+                    isCurrentlyPlayingThis
+                        ? 'bg-cyan-950/40 border-cyan-600/80 text-cyan-300'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/80 hover:border-slate-700'
+                }" data-prog-id="${prog.id}">
+                    <div class="flex-1 min-w-0 pr-3">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">${dateStr}</span>
+                            <span class="text-[11px] font-mono text-cyan-400 font-semibold">${timeRange}</span>
+                            ${isCurrentlyPlayingThis ? '<span class="text-[10px] font-bold text-amber-400 animate-pulse">Now Playing</span>' : ''}
+                        </div>
+                        <div class="text-xs font-medium text-white truncate group-hover:text-cyan-300">${prog.title}</div>
+                    </div>
+                    <button class="btn-secondary text-[11px] py-1.5 px-3 flex items-center gap-1.5 group-hover:border-cyan-500 flex-shrink-0">
+                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                        <span>${isCurrentlyPlayingThis ? 'Restart' : 'Watch'}</span>
+                    </button>
+                </div>
+            `;
+        }).join("");
+
+        // Attach click listeners to catchup items
+        catchupListEl.querySelectorAll(".catchup-item").forEach(item => {
+            item.addEventListener("click", () => {
+                const progId = parseInt(item.getAttribute("data-prog-id"));
+                const prog = replayable.find(p => p.id === progId);
+                if (prog) {
+                    playCatchupProgram(prog);
+                    // Re-render catchup list to update 'Now Playing' highlight
+                    loadCatchupSchedule(channelId);
+                }
+            });
+        });
+
+    } catch (err) {
+        console.error("Failed to load catchup schedule:", err);
+        catchupListEl.innerHTML = `
+            <div class="text-center py-6 text-xs text-red-400">
+                Network error loading replay schedule.
+            </div>
+        `;
+    }
+}
+
 // Event Listeners
 document.addEventListener("DOMContentLoaded", () => {
+    // Channel Search with Debounce
     if (searchInput) {
         let searchTimeout = null;
         searchInput.addEventListener("input", () => {
@@ -361,25 +533,36 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Stream Quality Selector
     if (qualitySelect) {
         qualitySelect.addEventListener("change", () => {
-            playCurrentChannelStream();
+            if (currentReplayProgram) {
+                playCatchupProgram(currentReplayProgram);
+            } else {
+                playCurrentChannelStream();
+            }
             if (typeof showToast === 'function') {
                 showToast(`Stream quality set to: ${qualitySelect.options[qualitySelect.selectedIndex].text}`, "info");
             }
         });
     }
 
+    // Stream Reload Button
     const reloadBtn = document.getElementById("btn-reload-stream");
     if (reloadBtn) {
         reloadBtn.addEventListener("click", () => {
-            playCurrentChannelStream();
+            if (currentReplayProgram) {
+                playCatchupProgram(currentReplayProgram);
+            } else {
+                playCurrentChannelStream();
+            }
             if (typeof showToast === 'function') {
                 showToast("Reloading stream...", "info");
             }
         });
     }
 
+    // Fullscreen Toggle
     const fsBtn = document.getElementById("btn-fullscreen-player");
     if (fsBtn && videoEl) {
         fsBtn.addEventListener("click", () => {
@@ -393,6 +576,41 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (document.exitFullscreen) {
                     document.exitFullscreen();
                 }
+            }
+        });
+    }
+
+    // Catchup Archive Toggle Button
+    if (catchupBtn) {
+        catchupBtn.addEventListener("click", () => {
+            if (!catchupDrawer) return;
+            const isHidden = catchupDrawer.classList.contains("hidden");
+            if (isHidden) {
+                catchupDrawer.classList.remove("hidden");
+                if (currentChannel) {
+                    loadCatchupSchedule(currentChannel.id);
+                }
+            } else {
+                catchupDrawer.classList.add("hidden");
+            }
+        });
+    }
+
+    // Close Catchup Drawer
+    if (catchupCloseBtn && catchupDrawer) {
+        catchupCloseBtn.addEventListener("click", () => {
+            catchupDrawer.classList.add("hidden");
+        });
+    }
+
+    // Return to Live TV Button
+    if (returnLiveBtn) {
+        returnLiveBtn.addEventListener("click", () => {
+            currentReplayProgram = null;
+            if (replayBanner) replayBanner.classList.add("hidden");
+            playCurrentChannelStream();
+            if (typeof showToast === 'function') {
+                showToast("Returned to Live TV", "info");
             }
         });
     }

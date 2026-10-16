@@ -134,12 +134,16 @@ def get_stream_variant(request: Request, url: str = Query(..., description="Targ
 def get_channel_stream(
     request: Request,
     channel_id: str,
-    quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best', '1080p', '720p'")
+    quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best', '1080p', '720p'"),
+    epg_id: Optional[int] = Query(None, description="Direct EPG program ID for catchup archive"),
+    utc: Optional[int] = Query(None, description="UTC timestamp for catchup replay"),
+    start: Optional[int] = Query(None, description="Start timestamp for catchup replay")
 ):
     """
-    Main HLS Stream Endpoint for Live TV.
+    Main HLS Stream Endpoint for Live TV & Timestamp Catchup.
     Proxies manifest with legit Chrome headers to prevent Sweet.tv CDN blocking,
     rewriting variant URLs for IPTVnator, Video.js, Kodi, and VLC.
+    Supports both live streaming and timestamp-based archive replay.
     """
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
@@ -149,11 +153,17 @@ def get_channel_stream(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid channel ID.")
 
+    # Resolve catchup epg_id if timestamp provided
+    target_epg_id = epg_id
+    if not target_epg_id and (utc or start):
+        from app.stream import resolve_epg_id_from_utc
+        target_epg_id = resolve_epg_id_from_utc(cid, utc or start)
+
     base_url = get_effective_base_url(request)
     content, media_type = build_proxy_master_m3u8(
         channel_id=cid,
         base_url=base_url,
-        epg_id=None,
+        epg_id=target_epg_id,
         quality=quality or config.default_quality
     )
 
