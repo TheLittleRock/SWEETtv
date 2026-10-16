@@ -1,8 +1,9 @@
 # Sweet.tv IPTV Proxy Server & Web TV
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![GHCR Image](https://img.shields.io/badge/GHCR-Multi--Arch%20(amd64%20%2F%20arm64)-orange.svg?logo=github)](https://github.com/TheLittleRock/SWEETtv/pkgs/container/sweettv)
 [![Portainer](https://img.shields.io/badge/Portainer-Stack-13BEBB.svg?logo=portainer&logoColor=white)](https://www.portainer.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -16,16 +17,17 @@ Designed for deployment on home servers, NAS, Docker, or Portainer, and optimize
 
 - 🚀 **Zero-Overhead Direct CDN Streaming**: Employs HTTP 302 redirects directly to Sweet.tv CDN edge nodes (`Access-Control-Allow-Origin: *`). Your server consumes **zero CPU and zero bandwidth** during video playback.
 - 📺 **Modern Web TV Player**: Sleek dark-mode dashboard with built-in **Hls.js** video player, live channel guide, channel search, category filters, and EPG progress bars.
+- ⚡ **1-Click Quick Mode Switcher**: Instantly toggle between **Live Web TV Player** and **M3U/EPG Links & Setup Guides** with one click.
+- ⏪ **7-Day EPG Catchup (Archive Replay)**: Full catchup replay support both in the Web Player (interactive 7-day drawer) and in external IPTV clients (Kodi `catchup="vod"`, TiviMate, IPTVnator).
 - 💎 **Maximum Quality & Bitrate Options**:
-  - **Adaptive Multi-bitrate**: Standard master playlist letting clients (TiviMate, Kodi, VLC) pick or auto-adapt.
-  - **Forced Highest Bitrate / 4K**: Parameter `?quality=best` automatically locks streams to the maximum available bitrate (up to 3840x2160 UHD @ 17 Mbps or 1080p FHD @ 8 Mbps at 50 FPS).
+  - **Adaptive Multi-bitrate (`auto`)**: Standard master playlist letting clients (TiviMate, Kodi, VLC) pick or auto-adapt.
+  - **Forced Highest Bitrate / 4K (`best`)**: Parameter `?quality=best` automatically locks streams to the maximum available bitrate (up to 3840x2160 UHD @ 17 Mbps or 1080p FHD @ 8 Mbps at 50 FPS).
   - Specific resolution selectors: `1080p`, `720p`, `360p`.
 - 🔄 **Hands-Off Automated Authentication**: Automatically tracks JWT token lifetime and refreshes authorization before expiry.
 - 📱 **QR Code Device Login**: Simple device activation workflow via `sweet.tv/addDevice` with auto-polling.
-- ⏪ **7-Day Catchup Replay (Archive)**: Automatic `catchup="vod"` integration formatted for Kodi PVR IPTV Simple Client and TiviMate.
 - 🌐 **Nginx Proxy Manager (NPM) Ready**: Generates correct public HTTPS links behind reverse proxies via `EXTERNAL_URL` or `X-Forwarded-*` headers.
 - 📦 **Gzip-Compressed EPG**: Serves `/epg.xml.gz` for instantaneous guide loading in IPTV clients.
-- 🐳 **Portainer & Docker Compose Compatible**: Ready-to-run container with persistent named volume for settings and credentials.
+- 🐳 **Portainer & Docker Compose Compatible**: Ready-to-run multi-arch container (`linux/amd64`, `linux/arm64`) with persistent volume for settings and credentials.
 
 ---
 
@@ -66,108 +68,54 @@ Sweet.tv records broadcasts for up to 7 days on supported channels. This server 
 
 ---
 
-## 🚀 Quick Start (Local Service)
+## 🐳 Docker & Portainer Deployment Guide
 
-### 1. Prerequisites
-- Python 3.10 or higher
-- Git
+### Deployment Options Overview
 
-### 2. Clone and Run
-```bash
-git clone https://github.com/TheLittleRock/SWEETtv.git
-cd SWEETtv
-
-# Run startup script (automatically configures .venv and dependencies)
-./run.sh
-```
-
-Or manually:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 5000
-```
-
-Open your browser at **`http://localhost:5000`**.
-
-### 3. Connect Sweet.tv Account
-1. Click **Connect Account** on the dashboard.
-2. Enter the displayed 4-digit code on [sweet.tv/addDevice](https://sweet.tv/addDevice) or scan the QR code with your phone.
-3. The server will detect authorization automatically and load your channels.
+You can deploy this application using any of the following 3 verified methods:
+- **Method 1: Portainer Repository Stack** — Portainer automatically clones the GitHub repository and builds the image locally.
+- **Method 2: Portainer Web Editor (Pre-built GHCR Image)** — Instant 1-click deployment using the automated multi-arch GitHub Container Registry image (`ghcr.io/thelittlerock/sweettv:latest`). **No compilation required!**
+- **Method 3: Local Docker Compose CLI** — Clone and run with `docker compose up -d`.
 
 ---
 
-## 🐳 Portainer Deployment & Automatic GitHub Compilation Guide
+### Method 1: Portainer Repository Stack (Automatic GitHub Build)
 
-### How Portainer Builds Directly from GitHub (No Pre-built Image Required)
-
-A common question is: **"Does Portainer automatically download and compile the Docker image from GitHub?"**
-
-**Yes, absolutely!** Portainer's **Repository** build method handles the entire build process natively on your machine:
-1. When you point Portainer to `https://github.com/TheLittleRock/SWEETtv.git`, Portainer clones the latest code from GitHub to your host.
+When you choose **Repository** in Portainer:
+1. Portainer clones the latest code from `https://github.com/TheLittleRock/SWEETtv.git` onto your Docker host.
 2. It detects the `Dockerfile` and `docker-compose.yml`.
-3. Portainer invokes `docker compose build` locally: it pulls the lightweight `python:3.11-slim` base image, installs dependencies from `requirements.txt`, copies the application files, and creates the container image.
-4. It starts the container and mounts the persistent volume `sweettv_data` (which preserves your login tokens and settings forever, even when updating).
+3. Portainer automatically compiles the image using the `python:3.11-slim` base image and launches the container.
+4. It attaches the persistent named volume `sweettv_data` (preserving your login tokens and settings forever, even when rebuilding).
 
-```
-[GitHub Repo] ────(Portainer Clones)────► [Local Docker Engine]
-                                                  │
-                                          (docker compose build)
-                                                  │
-                                                  ▼
-                                      [Compiled sweettv-proxy Image]
-                                                  │
-                                                  ▼
-                                      [Running Container :5000]
-                                                  │
-                                                  ▼
-                                      [Named Volume: sweettv_data]
-```
-
----
-
-### Step-by-Step Portainer Installation
-
-#### Method 1: Build Directly from GitHub Repository (Recommended)
-
+#### Steps:
 1. Open your **Portainer** dashboard.
-2. Navigate to **Stacks** &rarr; **Add stack**.
-3. Set the **Name**: `sweettv`.
-4. Under **Build method**, select **Repository**.
-5. Fill in the repository details:
+2. Go to **Stacks** &rarr; **Add stack**.
+3. Name: `sweettv`.
+4. Build method: Select **Repository**.
+5. Fill in the repository settings:
    - **Repository URL**: `https://github.com/TheLittleRock/SWEETtv.git`
-   - **Repository reference**: `refs/heads/main` (or leave default `main`)
+   - **Repository reference**: `refs/heads/main`
    - **Compose path**: `docker-compose.yml`
-6. (Optional) **Automatic updates**:
+6. *(Optional)* **Automatic updates**:
    - Turn **ON** **Automatic updates**.
-   - Choose **Polling** (e.g. check every 15 minutes) or **Webhook** (copy the Portainer webhook URL and paste it into your GitHub repository settings under Webhooks).
-   - Whenever you push or update the repository, Portainer will automatically pull the changes, recompile the Docker image, and restart the container seamlessly!
-7. Under **Environment variables**, click **Add environment variable**:
-   - `EXTERNAL_URL` = `https://tv.yourdomain.com` *(if using Nginx Proxy Manager or public domain)*
-   - `SWEETTV_COUNTRY_CODE` = `cs` *(or `sk`, `hu`, `pl`, `ro`, `uk`)*
-   - `DEFAULT_QUALITY` = `best` *(or `auto`, `1080p`, `720p`)*
-8. Click **Deploy the stack**.
-9. Portainer will clone, compile, and start the application. Once finished, visit `http://<your-server-ip>:5000` to activate your Sweet.tv account.
+   - Choose **Polling** (e.g. check every 15 minutes) or **Webhook**.
+   - Whenever a new commit is pushed to GitHub, Portainer will automatically pull changes, rebuild the image, and restart the container!
+7. Click **Deploy the stack**.
 
 ---
 
-#### Method 2: Web Editor (Pasting docker-compose.yml)
+### Method 2: Portainer Web Editor (Instant Pre-built Image)
 
-If your Docker server has cloned the repository locally or you prefer pasting the compose specification:
+If you prefer not to compile code on your server and want instantaneous deployment in seconds, use the pre-built multi-arch image (`linux/amd64` for Intel/AMD and `linux/arm64` for Raspberry Pi / ARM NAS):
 
 1. In Portainer, go to **Stacks** &rarr; **Add stack**.
-2. Select **Web editor** and paste:
+2. Name: `sweettv`.
+3. Select **Web editor** and paste:
 
 ```yaml
-version: '3.8'
-
 services:
   sweettv:
-    image: sweettv-proxy:latest
-    build:
-      context: https://github.com/TheLittleRock/SWEETtv.git#main
-      dockerfile: Dockerfile
+    image: ghcr.io/thelittlerock/sweettv:latest
     container_name: sweettv-proxy
     restart: unless-stopped
     ports:
@@ -175,15 +123,16 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5000
-      - SWEETTV_COUNTRY_CODE=cs            # cs, sk, hu, pl, uk, ro
-      - EXTERNAL_URL=                      # e.g. https://tv.yourdomain.com (optional)
-      - DEFAULT_QUALITY=auto               # 'auto', 'best', '1080p', '720p'
-      - DIRECT_REDIRECT=true
       - TZ=Europe/Prague
+      # Optional environment overrides (uncomment only if you want to hardcode them via Docker instead of the Web UI):
+      # - SWEETTV_COUNTRY_CODE=cs          # Options: cs, sk, hu, pl, uk, ro
+      # - EXTERNAL_URL=https://tv.yourdomain.com
+      # - DEFAULT_QUALITY=best             # Options: auto, best, 1080p, 720p
+      # - DIRECT_REDIRECT=true
     volumes:
       - sweettv_data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:5000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -194,7 +143,24 @@ volumes:
     name: sweettv_data
 ```
 
-3. Click **Deploy the stack**. Docker will build the image directly from the GitHub URL context.
+4. Click **Deploy the stack**. Docker pulls the image from GHCR and starts in seconds.
+
+---
+
+### Method 3: Local Docker Compose CLI
+
+```bash
+git clone https://github.com/TheLittleRock/SWEETtv.git
+cd SWEETtv
+
+# Build and start in detached mode
+docker compose up -d --build
+```
+
+View logs:
+```bash
+docker compose logs -f
+```
 
 ---
 
@@ -227,18 +193,26 @@ To securely access your M3U playlist, EPG, and Web TV player from outside your h
 2. **Details tab**:
    - **Domain Names**: `tv.yourdomain.com`
    - **Scheme**: `http`
-   - **Forward Hostname / IP**: IP of your Sweet.tv server or Docker container name (`sweettv-proxy` if on the same Docker network)
+   - **Forward Hostname / IP**: Local IP of your Sweet.tv host (e.g. `192.168.1.100`), or `sweettv-proxy` if NPM and Sweet.tv share a Docker network.
    - **Forward Port**: `5000`
-   - Turn **ON**: `Cache Assets`
-   - Turn **ON**: `Block Common Exploits`
-   - Turn **ON**: `Websockets Support`
+   - **Cache Assets**: **OFF** *(⚠️ CRITICAL: Do NOT enable Cache Assets in NPM! Caching live HLS playlists will cause video playback to freeze after a few seconds).*
+   - **Block Common Exploits**: **ON**
+   - **Websockets Support**: **ON**
 3. **SSL tab**:
    - Select **Request a new SSL Certificate**.
    - Turn **ON**: `Force SSL`.
    - Turn **ON**: `HTTP/2 Support`.
    - Turn **ON**: `HSTS Enabled`.
    - Enter your email and agree to Let's Encrypt Terms.
-4. Click **Save**.
+4. **Advanced tab** (Recommended for video streaming):
+   Add the following snippet to prevent proxy buffering timeouts during HLS streaming and EPG downloads:
+   ```nginx
+   proxy_buffering off;
+   proxy_read_timeout 300s;
+   proxy_connect_timeout 300s;
+   proxy_send_timeout 300s;
+   ```
+5. Click **Save**.
 
 ### Step 4: Configure External Domain
 Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
@@ -253,31 +227,56 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 
 ### 1. IPTVnator (Windows / Mac / Linux)
 1. In IPTVnator, click **Add via URL**.
-2. Enter the Playlist URL: `http://<server-ip>:5000/playlist.m3u` (or `?quality=best` for highest bitrate).
-3. In Playlist Settings, set the EPG URL to: `http://<server-ip>:5000/epg.xml`.
-4. Click **Save** and start watching. Streams load automatically with native HLS playback.
+2. Playlist URL: `http://<server-ip>:5000/playlist.m3u` (or `https://tv.yourdomain.com/playlist.m3u?quality=best`).
+3. TV Guide (EPG) URL: `http://<server-ip>:5000/epg.xml`.
+4. Click **Save** and start watching.
 
 ### 2. Kodi (PVR IPTV Simple Client)
 1. Install **PVR IPTV Simple Client** in Kodi:
    - *Settings &rarr; Add-ons &rarr; Install from repository &rarr; PVR clients &rarr; PVR IPTV Simple Client*.
 2. Open add-on settings:
    - **General**: Set *M3U playlist URL* to `https://tv.yourdomain.com/playlist.m3u` (or `?quality=best` for maximum bitrate).
-   - **EPG**: Set *XMLTV URL* to `https://tv.yourdomain.com/epg.xml.gz`.
+   - **EPG**: Set *XMLTV URL* to `https://tv.yourdomain.com/epg.xml.gz` (fast compressed format).
    - **Catchup**:
      - Enable Catchup: **Yes**
      - Catchup mode: **Default**
      - Query format: `{catchup-id}`
      - Catchup days: `7`
 
-### 3. TiviMate / OTT Navigator (Android TV)
+### 3. TiviMate / OTT Navigator (Android TV & Fire TV)
 1. Go to **Settings &rarr; Playlists &rarr; Add Playlist &rarr; M3U Playlist**.
 2. Enter URL: `https://tv.yourdomain.com/playlist.m3u` (or `?quality=best`).
 3. Add TV Guide (EPG): `https://tv.yourdomain.com/epg.xml`.
-4. Catchup Type: Set to **Xtream Codes / Flussonic / VOD**.
+4. Catchup: Set Catchup Type to **Xtream Codes / Flussonic / VOD**.
 
-### 4. VLC Media Player
+### 4. Apple TV & iOS (UHF, iPlayTV, IPTVX)
+1. Add new M3U playlist with URL: `https://tv.yourdomain.com/playlist.m3u`.
+2. Add EPG URL: `https://tv.yourdomain.com/epg.xml`.
+3. Catchup archive playback will work automatically using the embedded `catchup-source` tag.
+
+### 5. VLC Media Player
 - Go to **Media &rarr; Open Network Stream...** (Ctrl+N).
 - Paste `https://tv.yourdomain.com/playlist.m3u` and click **Play**.
+
+---
+
+## ⚙️ Environment Variables Reference
+
+All settings can be configured via the Web UI Settings tab, or passed as environment variables in Docker:
+
+| Variable | Default | Description |
+| :--- | :---: | :--- |
+| `HOST` | `0.0.0.0` | Listen host address |
+| `PORT` | `5000` | Listen port |
+| `SWEETTV_DATA_DIR` | `/app/data` (Docker) / `data` | Directory where `config.json` and cache are stored |
+| `SWEETTV_COUNTRY_CODE` | `cs` | Sweet.tv country region code (`cs`, `sk`, `hu`, `pl`, `ro`, `uk`) |
+| `EXTERNAL_URL` | *None* | Public domain URL e.g. `https://tv.yourdomain.com` (used for M3U/EPG links) |
+| `DEFAULT_QUALITY` | `auto` | Default stream quality: `auto` (adaptive), `best` (highest bitrate / 4K), `1080p`, `720p` |
+| `DIRECT_REDIRECT` | `true` | When `true`, redirects stream clients directly to Sweet.tv CDN (zero server CPU/bandwidth) |
+| `TZ` | `Europe/Prague` | Container timezone |
+
+> [!TIP]
+> Settings updated in the Web UI are stored in `/app/data/config.json`. Thanks to the named volume `sweettv_data`, your settings, device registration, and tokens will persist forever across container updates.
 
 ---
 
@@ -295,9 +294,10 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 | `/stream/{channel_id}.m3u8` | `GET` | Main HLS stream master manifest endpoint |
 | `/stream/{channel_id}/{epg_id}.m3u8` | `GET` | 7-day catchup archive replay stream |
 | `/stream/variant.m3u8` | `GET` | HLS variant manifest proxy with absolute TS URLs |
-| `/play/{channel_id}` | `GET` | Legacy/shorthand stream resolver |
+| `/play/{channel_id}` | `GET` | Shorthand stream resolver |
 | `/api/status` | `GET` | Server, authentication, and channel status |
 | `/api/channels` | `GET` | JSON list of channels with categories and EPG now/next |
+| `/api/channel/{id}/epg` | `GET` | 7-day program schedule with catchup replay availability |
 | `/api/stream/{channel_id}/info`| `GET` | Stream variant inspector (resolutions, bitrates, codecs) |
 | `/api/auth/start` | `POST` | Generates Sweet.tv device activation code and QR URL |
 | `/api/auth/status?code=...` | `GET` | Polls authentication status |
@@ -310,11 +310,29 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 
 ## 🛠️ Stream Quality & Codecs Under the Hood
 
-When an IPTV client requests a channel via `/play/{id}`:
-1. The server asks the Sweet.tv API for the channel's master HLS manifest (`multistream: True`).
+When an IPTV client requests a channel via `/stream/{id}.m3u8`:
+1. The server requests the Sweet.tv API for the channel's master HLS manifest (`multistream: True`).
 2. If **Adaptive (`auto`)** is requested, the client receives the multi-bitrate master manifest and dynamically negotiates quality or lets you choose in the player.
 3. If **Highest Bitrate (`best`)** is requested, our stream resolver fetches the master playlist, parses `#EXT-X-STREAM-INF:` tags, and redirects directly to the variant with the **highest bandwidth** (e.g. 2160p 4K @ 17 Mbps, or 1080p @ 8 Mbps AVC/HEVC).
 4. Sweet.tv CDN edge nodes deliver TS chunks with `Access-Control-Allow-Origin: *` headers, ensuring smooth in-browser playback without CORS errors.
+
+---
+
+## ❓ Frequently Asked Questions & Troubleshooting
+
+### Q: Port 5000 is already in use on my host. How can I change it?
+In `docker-compose.yml`, change the host port mapping:
+```yaml
+ports:
+  - "5055:5000"
+```
+The internal container port remains `5000`, while the host accesses it at `http://<server-ip>:5055`.
+
+### Q: Why do my live streams freeze after 6 seconds behind Nginx Proxy Manager?
+Check your NPM Proxy Host settings: **Cache Assets** must be turned **OFF**. If Nginx caches live `.m3u8` manifests, the player keeps reloading the same cached chunk list instead of fetching new live video segments.
+
+### Q: Do my settings and login get deleted when updating the container?
+No. All configuration, tokens, device UUID, and MAC address are saved in `/app/data/config.json`, which is mounted to the persistent Docker named volume `sweettv_data`. When you pull a new image or rebuild the stack, your session is completely preserved.
 
 ---
 

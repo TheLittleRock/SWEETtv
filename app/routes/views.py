@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -8,7 +9,10 @@ from app.routes.iptv import get_effective_base_url
 
 logger = logging.getLogger("SweetTV.Routes.Views")
 router = APIRouter(include_in_schema=False)
-templates = Jinja2Templates(directory="app/templates")
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+templates_dir = os.path.join(BASE_DIR, "templates")
+templates = Jinja2Templates(directory=templates_dir)
 
 
 @router.get("/", response_class=HTMLResponse)

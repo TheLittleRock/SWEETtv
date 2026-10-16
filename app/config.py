@@ -76,15 +76,22 @@ class ConfigManager:
                         except Exception as e:
                             logger.warning(f"Failed loading fallback config {fallback}: {e}")
 
-            # Environment variable overrides
-            if os.getenv("SWEETTV_COUNTRY_CODE"):
-                self.data["countryCode"] = os.getenv("SWEETTV_COUNTRY_CODE").lower()
-            if os.getenv("EXTERNAL_URL"):
-                self.data["external_url"] = os.getenv("EXTERNAL_URL").rstrip("/")
-            if os.getenv("DEFAULT_QUALITY"):
-                self.data["default_quality"] = os.getenv("DEFAULT_QUALITY")
-            if os.getenv("DIRECT_REDIRECT"):
-                self.data["direct_redirect"] = os.getenv("DIRECT_REDIRECT").lower() in ("true", "1", "yes")
+            # Environment variable overrides (only if explicitly set and non-empty)
+            env_cc = (os.getenv("SWEETTV_COUNTRY_CODE") or "").strip()
+            if env_cc:
+                self.data["countryCode"] = env_cc.lower()
+
+            env_ext = (os.getenv("EXTERNAL_URL") or "").strip()
+            if env_ext:
+                self.data["external_url"] = env_ext.rstrip("/")
+
+            env_quality = (os.getenv("DEFAULT_QUALITY") or "").strip()
+            if env_quality:
+                self.data["default_quality"] = env_quality.lower()
+
+            env_redirect = (os.getenv("DIRECT_REDIRECT") or "").strip()
+            if env_redirect:
+                self.data["direct_redirect"] = env_redirect.lower() in ("true", "1", "yes")
 
             self._ensure_defaults()
 
