@@ -57,14 +57,13 @@ Sweet.tv records broadcasts for up to 7 days on supported channels. This server 
    - Click **Watch** on any show to start streaming the recorded broadcast.
    - An amber notification banner confirms archive playback; click **Return to Live TV** at any time to switch back to the live broadcast.
 
-2. **In External IPTV Apps (Kodi, TiviMate, IPTVnator)**:
-   - The M3U playlist automatically includes standard IPTV catchup headers:
+2. **In External IPTV Apps (IPTVnator, Kodi, TiviMate, OTT Navigator)**:
+   - The M3U playlist automatically includes universal IPTV catchup headers (`catchup="default"` with `{utc}` and `{lutc}` tokens):
      ```m3u
-     #EXTINF:-1 tvg-id="123" catchup="vod" catchup-days="7" catchup-source="http://<server-ip>:5000/stream/123/{catchup-id}.m3u8", ČT1 HD
+     #EXTINF:-1 tvg-id="123" catchup="default" catchup-days="7" catchup-source="http://<server-ip>:5000/stream/123.m3u8?utc={utc}&lutc={lutc}", ČT1 HD
      http://<server-ip>:5000/stream/123.m3u8
      ```
-   - Also supports timestamp-based queries automatically for apps that use UTC parameters:
-     `/stream/{channel_id}.m3u8?utc={utc}` or `?start={start}`.
+   - Automatically supports timestamp queries (`?utc={utc}`, `?start={start}`), malformed queries with duplicate question marks (IPTVnator bug workaround), and direct program IDs (`/stream/{channel_id}/{epg_id}.m3u8`).
 
 ---
 
@@ -281,6 +280,7 @@ The server provides full native **Ministra / Stalker Middleware** emulation:
 2. Playlist URL: `http://<server-ip>:5000/playlist.m3u` (or `https://tv.yourdomain.com/playlist.m3u?quality=best`).
 3. TV Guide (EPG) URL: `http://<server-ip>:5000/epg.xml`.
 4. Click **Save** and start watching.
+5. **Catchup / TV Archive**: Open the EPG guide drawer (icon on the right or bottom toolbar). Past programs from the last 7 days will be displayed. Clicking any past broadcast will immediately start the catchup replay stream.
 
 ### 3. Kodi (PVR IPTV Simple Client)
 1. Install **PVR IPTV Simple Client** in Kodi:

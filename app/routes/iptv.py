@@ -1,14 +1,31 @@
 import logging
-from typing import Optional
-from urllib.parse import unquote
+from typing import Any, Dict, Optional
+from urllib.parse import parse_qs, unquote
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.config import config
 from app.epg import generate_m3u_playlist, generate_xmltv_epg, get_xmltv_epg_gz
-from app.stream import build_proxy_master_m3u8, build_proxy_variant_m3u8
+from app.stream import (
+    build_proxy_master_m3u8,
+    build_proxy_variant_m3u8,
+    resolve_epg_id_from_utc,
+    safe_parse_timestamp,
+)
 
 logger = logging.getLogger("SweetTV.Routes.IPTV")
 router = APIRouter(tags=["IPTV"])
+
+
+def parse_stream_query(request: Request) -> Dict[str, str]:
+    """
+    Extracts query parameters handling duplicate question marks (IPTVnator issue #579 bug workaround),
+    ampersands, and unquoted values.
+    """
+    raw_query = request.url.query
+    if "?" in raw_query:
+        raw_query = raw_query.replace("?", "&")
+    parsed = parse_qs(raw_query)
+    return {k: v[0] for k, v in parsed.items() if v}
 
 
 def get_effective_base_url(request: Request) -> str:
@@ -30,9 +47,12 @@ def get_effective_base_url(request: Request) -> str:
 
 
 def clean_id(raw_id: str) -> int:
-    """Strips file extensions or pipe parameters from IDs."""
-    clean = raw_id.split("|")[0].split(".")[0].strip()
-    return int(clean)
+    """Strips file extensions, suffixes (.id.com), or pipe parameters from IDs."""
+    clean = str(raw_id).split("|")[0].split(".")[0].strip()
+    digits = "".join(c for c in clean if c.isdigit())
+    if digits:
+        return int(digits)
+    raise ValueError(f"No numeric ID found in '{raw_id}'")
 
 
 @router.get("/playlist.m3u", response_class=Response)
@@ -161,23 +181,34 @@ def get_channel_stream(
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
+    params = parse_stream_query(request)
+    req_quality = params.get("quality") or quality or config.default_quality
+
     try:
         cid = clean_id(channel_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid channel ID.")
 
-    # Resolve catchup epg_id if timestamp provided
+    # 1. Direct epg_id from query parameter
     target_epg_id = epg_id
-    if not target_epg_id and (utc or start):
-        from app.stream import resolve_epg_id_from_utc
-        target_epg_id = resolve_epg_id_from_utc(cid, utc or start)
+    if not target_epg_id and params.get("epg_id"):
+        try:
+            target_epg_id = int(params["epg_id"])
+        except ValueError:
+            pass
+
+    # 2. Timestamp resolution from utc, start, or timestamp parameter
+    if not target_epg_id:
+        ts_val = params.get("utc") or params.get("start") or params.get("timestamp") or utc or start
+        if ts_val:
+            target_epg_id = resolve_epg_id_from_utc(cid, ts_val)
 
     base_url = get_effective_base_url(request)
     content, media_type = build_proxy_master_m3u8(
         channel_id=cid,
         base_url=base_url,
         epg_id=target_epg_id,
-        quality=quality or config.default_quality
+        quality=req_quality
     )
 
     return Response(
@@ -206,18 +237,51 @@ def get_catchup_stream(
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
+    params = parse_stream_query(request)
+    req_quality = params.get("quality") or quality or config.default_quality
+
     try:
         cid = clean_id(channel_id)
-        pid = clean_id(epg_id) if epg_id.lower() not in ("null", "none", "0") else None
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid IDs.")
+        raise HTTPException(status_code=400, detail="Invalid channel ID.")
+
+    pid = None
+    epg_id_str = str(epg_id).strip()
+    is_placeholder = (
+        epg_id_str.startswith("{") or 
+        epg_id_str.lower() in ("null", "none", "0", "undefined", "live")
+    )
+    if not is_placeholder:
+        try:
+            raw_clean = epg_id_str.split("|")[0].split(".")[0].strip()
+            digits = "".join(c for c in raw_clean if c.isdigit())
+            if digits:
+                num_val = int(digits)
+                # If number is in standard Unix timestamp range (1 to 3 billion), resolve via EPG
+                if 1_000_000_000 <= num_val <= 3_000_000_000:
+                    pid = resolve_epg_id_from_utc(cid, num_val) or num_val
+                else:
+                    pid = num_val
+        except Exception:
+            pid = None
+
+    # If pid could not be determined from path, inspect query parameters
+    if not pid:
+        ts_val = params.get("utc") or params.get("start") or params.get("timestamp")
+        if ts_val:
+            pid = resolve_epg_id_from_utc(cid, ts_val)
+        elif params.get("epg_id"):
+            try:
+                pid = int(params["epg_id"])
+            except ValueError:
+                pass
 
     base_url = get_effective_base_url(request)
     content, media_type = build_proxy_master_m3u8(
         channel_id=cid,
         base_url=base_url,
         epg_id=pid,
-        quality=quality or config.default_quality
+        quality=req_quality
     )
 
     return Response(

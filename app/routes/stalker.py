@@ -212,11 +212,17 @@ async def stalker_load(request: Request):
                 raw_cmd = raw_cmd[7:].strip()
 
             cid = None
+            epg_id = None
             # If cmd is a direct URL or contains channel ID
             if "/stream/" in raw_cmd or "/play/" in raw_cmd:
                 try:
                     seg = raw_cmd.split("/stream/")[-1].split("/play/")[-1]
-                    cid = clean_id(seg)
+                    parts = seg.split("?")[0].split("/")
+                    if len(parts) >= 2:
+                        cid = clean_id(parts[0])
+                        epg_id = parts[1]
+                    else:
+                        cid = clean_id(parts[0])
                 except Exception:
                     pass
             elif raw_cmd.isdigit():
@@ -228,7 +234,10 @@ async def stalker_load(request: Request):
 
             quality = config.default_quality
             q_param = f"?quality={quality}" if quality and quality != "auto" else ""
-            final_stream_url = f"{base_url}/stream/{cid}.m3u8{q_param}"
+            if epg_id:
+                final_stream_url = f"{base_url}/stream/{cid}/{epg_id}.m3u8{q_param}"
+            else:
+                final_stream_url = f"{base_url}/stream/{cid}.m3u8{q_param}"
 
             return JSONResponse({
                 "js": {

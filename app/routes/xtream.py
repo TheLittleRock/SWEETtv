@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app.config import config
 from app.epg import get_cached_channels
 from app.routes.iptv import clean_id, get_effective_base_url
-from app.stream import build_proxy_master_m3u8, resolve_epg_id_from_utc
+from app.stream import build_proxy_master_m3u8, resolve_epg_id_from_utc, safe_parse_timestamp
 
 logger = logging.getLogger("SweetTV.Routes.Xtream")
 router = APIRouter(tags=["Xtream Codes API"])
@@ -17,18 +17,7 @@ router = APIRouter(tags=["Xtream Codes API"])
 
 def _parse_timeshift_timestamp(start_str: str) -> Optional[int]:
     """Parses timeshift start parameter into a unix timestamp."""
-    if not start_str:
-        return None
-    start_clean = str(start_str).strip()
-    if start_clean.isdigit():
-        return int(start_clean)
-    for fmt in ("%Y-%m-%d:%H-%M", "%Y-%m-%d-%H-%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            dt = datetime.strptime(start_clean, fmt)
-            return int(dt.timestamp())
-        except ValueError:
-            continue
-    return None
+    return safe_parse_timestamp(start_str)
 
 
 @router.api_route("/player_api.php", methods=["GET", "POST"])

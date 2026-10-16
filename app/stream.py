@@ -87,20 +87,93 @@ def parse_master_m3u8(content: str, node_host: str = "") -> List[Dict[str, Any]]
     return variants
 
 
-def resolve_epg_id_from_utc(channel_id: int, utc_time: int) -> Optional[int]:
-    """Finds the corresponding EPG program ID for a channel at a given UTC timestamp."""
-    from app.epg import get_cached_channels
-    data = get_cached_channels(need_epg=True)
-    if not data:
+def safe_parse_timestamp(val: Any) -> Optional[int]:
+    """
+    Safely converts arbitrary timestamp inputs (epoch seconds, epoch milliseconds,
+    ISO strings, XMLTV dates, Xtream format) into integer unix epoch seconds.
+    """
+    if val is None:
         return None
+    val_str = str(val).strip()
+    if not val_str or val_str.lower() in ("none", "null", "undefined", "0", "{utc}", "{start}"):
+        return None
+
+    # Check if numeric (seconds or milliseconds)
+    try:
+        ts = float(val_str)
+        # If milliseconds (> 10 billion), convert to seconds
+        if ts > 10_000_000_000:
+            ts = ts / 1000.0
+        return int(ts)
+    except ValueError:
+        pass
+
+    # Try known date/time string formats
+    formats = (
+        "%Y-%m-%d:%H-%M",
+        "%Y-%m-%d-%H-%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y%m%d%H%M%S",
+    )
+    from datetime import datetime
+    base_part = val_str.split("+")[0].strip()
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(base_part, fmt)
+            return int(dt.timestamp())
+        except (ValueError, TypeError):
+            continue
+
+    return None
+
+
+def _find_epg_match(data: Dict[str, Any], channel_id: int, utc_time: int) -> Optional[int]:
+    """Helper to match a timestamp to an EPG program in channel data."""
+    best_id = None
+    min_distance = float("inf")
 
     for ch in data.get("list", []):
         if ch.get("id") == channel_id:
-            for p in ch.get("epg", []):
+            epg_list = ch.get("epg", [])
+            for p in epg_list:
                 t_start = p.get("time_start", 0)
                 t_stop = p.get("time_stop", 0)
+                if not t_start or not t_stop:
+                    continue
+                # 1. Exact containment
                 if t_start <= utc_time < t_stop:
                     return p.get("id")
+                # 2. Track nearest candidate within 30 minutes tolerance (drift / client rounding)
+                dist = min(abs(utc_time - t_start), abs(utc_time - t_stop))
+                if dist < min_distance and dist <= 1800:
+                    min_distance = dist
+                    best_id = p.get("id")
+
+    return best_id
+
+
+def resolve_epg_id_from_utc(channel_id: int, utc_time_raw: Any) -> Optional[int]:
+    """Finds the corresponding EPG program ID for a channel at a given UTC timestamp."""
+    utc_time = safe_parse_timestamp(utc_time_raw)
+    if not utc_time:
+        return None
+
+    from app.epg import get_cached_channels
+    data = get_cached_channels(need_epg=True)
+    if data:
+        matched = _find_epg_match(data, channel_id, utc_time)
+        if matched:
+            return matched
+
+    # If no match in current cache, force-refresh deep 7-day EPG and retry
+    logger.info(f"EPG entry not in cache for channel {channel_id} at {utc_time}, fetching fresh 7-day EPG...")
+    fresh_data = get_cached_channels(force_refresh=True, need_epg=True)
+    if fresh_data:
+        return _find_epg_match(fresh_data, channel_id, utc_time)
+
     return None
 
 
@@ -190,8 +263,30 @@ def build_proxy_master_m3u8(
     if not details or not details.get("master_content"):
         return "#EXTM3U\n", "application/vnd.apple.mpegurl"
 
-    selected_quality = (quality or config.default_quality).lower().strip()
+    master_content = details["master_content"]
     node_host = details.get("node_host", "")
+    is_master = "#EXT-X-STREAM-INF" in master_content
+
+    # If the response from Sweet.tv is a media playlist (single stream or direct DVR catchup variant),
+    # rewrite relative segment paths directly to absolute Sweet.tv CDN URLs!
+    if not is_master:
+        parsed_master = urlparse(details.get("master_url", ""))
+        lines = master_content.splitlines()
+        rewritten = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("/"):
+                # Absolute path on node CDN: turn into full URL
+                rewritten.append(f"{node_host}{stripped}")
+            elif not stripped.startswith("#") and stripped and not stripped.startswith("http"):
+                # Relative path: resolve against node_host and directory
+                parent = "/".join(parsed_master.path.split("/")[:-1])
+                rewritten.append(f"{node_host}{parent}/{stripped}")
+            else:
+                rewritten.append(line)
+        return "\n".join(rewritten) + "\n", "application/vnd.apple.mpegurl"
+
+    selected_quality = (quality or config.default_quality).lower().strip()
 
     # If 'best' / 'highest' / '4k' requested, redirect to highest quality variant directly
     if selected_quality in ("best", "highest", "max", "4k", "uhd") and details.get("highest_variant"):
@@ -211,7 +306,7 @@ def build_proxy_master_m3u8(
                 return build_proxy_variant_m3u8(v["url"], base_url)
 
     # Rewrite master manifest lines
-    lines = details["master_content"].splitlines()
+    lines = master_content.splitlines()
     rewritten = []
     for line in lines:
         stripped = line.strip()
