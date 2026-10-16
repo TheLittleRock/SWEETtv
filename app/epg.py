@@ -72,7 +72,8 @@ def generate_m3u_playlist(
     quality: Optional[str] = None,
     catchup: Optional[str] = None,
     no_epg: bool = False,
-    legacy_id: bool = False
+    legacy_id: bool = False,
+    bare: bool = False
 ) -> str:
     """
     Generates clean, standard M3U/M3U8 playlist with full IPTV metadata,
@@ -91,11 +92,15 @@ def generate_m3u_playlist(
     if catchup is not None:
         include_catchup = catchup.lower() in ("vod", "default", "1", "true", "kodi", "append")
         mode = catchup.lower()
+    elif no_epg or bare:
+        # In clean / bare mode, strictly omit catchup tags to avoid buggy client database parsers
+        include_catchup = False
+        mode = "none"
     else:
         include_catchup = bool(config.get("m3u_catchup", True))
         mode = "default"
 
-    if not no_epg:
+    if not no_epg and not bare:
         lines = [f'#EXTM3U url-tvg="{base_url}/epg.xml" x-tvg-url="{base_url}/epg.xml"']
     else:
         lines = ['#EXTM3U']
@@ -120,24 +125,27 @@ def generate_m3u_playlist(
         # Standard stream URL
         stream_link = f"{base_url}/stream/{cid}.m3u8{q_param}"
 
-        catchup_tag = ""
-        if include_catchup and ch.get("catchup"):
-            catchup_days = max(1, int(ch.get("catchup_duration", 7) or 7))
-            sep = "&" if q_param else "?"
-            if mode == "append":
-                catchup_tag = f'catchup="append" catchup-source="{sep}utc={{utc}}&lutc={{lutc}}" catchup-days="{catchup_days}"'
-            elif mode in ("vod", "kodi"):
-                catchup_source = f"{base_url}/stream/{cid}/{{catchup-id}}.m3u8{q_param}"
-                catchup_tag = f'catchup="vod" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
-            else:
-                # Universal standard (IPTVnator, TiviMate, OTT Navigator, VLC, Televizo)
-                catchup_source = f"{base_url}/stream/{cid}.m3u8{q_param}{sep}utc={{utc}}&lutc={{lutc}}"
-                catchup_tag = f'catchup="default" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
-
-        if catchup_tag:
-            extinf = f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" tvg-chno="{idx}" {catchup_tag},{cname}'
+        if bare:
+            extinf = f'#EXTINF:-1,{cname}'
         else:
-            extinf = f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" tvg-chno="{idx}",{cname}'
+            catchup_tag = ""
+            if include_catchup and ch.get("catchup"):
+                catchup_days = max(1, int(ch.get("catchup_duration", 7) or 7))
+                sep = "&" if q_param else "?"
+                if mode == "append":
+                    catchup_tag = f'catchup="append" catchup-source="{sep}utc={{utc}}&lutc={{lutc}}" catchup-days="{catchup_days}"'
+                elif mode in ("vod", "kodi"):
+                    catchup_source = f"{base_url}/stream/{cid}/{{catchup-id}}.m3u8{q_param}"
+                    catchup_tag = f'catchup="vod" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
+                else:
+                    # Universal standard (IPTVnator, TiviMate, OTT Navigator, VLC, Televizo)
+                    catchup_source = f"{base_url}/stream/{cid}.m3u8{q_param}{sep}utc={{utc}}&lutc={{lutc}}"
+                    catchup_tag = f'catchup="default" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
+
+            if catchup_tag:
+                extinf = f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" tvg-chno="{idx}" {catchup_tag},{cname}'
+            else:
+                extinf = f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" tvg-chno="{idx}",{cname}'
 
         lines.append(extinf)
         lines.append(stream_link)

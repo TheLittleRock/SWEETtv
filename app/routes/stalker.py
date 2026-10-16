@@ -182,6 +182,9 @@ async def stalker_load(request: Request):
                 icon = ch.get("icon_v2_url") or ch.get("icon_url") or ""
                 stream_url = f"{base_url}/stream/{cid}.m3u8{q_param}"
 
+                is_catchup = 1 if ch.get("catchup") else 0
+                catchup_days = int(ch.get("catchup_duration", 7) or 7) if is_catchup else 0
+
                 stb_channels.append({
                     "id": str(cid),
                     "name": cname,
@@ -189,8 +192,14 @@ async def stalker_load(request: Request):
                     "censored": 0,
                     "lock": 0,
                     "fav": 0,
-                    "archive": 1 if ch.get("catchup") else 0,
+                    "adult": 0,
+                    "status": 1,
+                    "archive": is_catchup,
+                    "tv_archive": is_catchup,
+                    "tv_archive_duration": catchup_days,
                     "tv_genre_id": str(cat_id),
+                    "genre_id": str(cat_id),
+                    "xmltv_id": str(cid),
                     "logo": icon,
                     "cmd": f"ffmpeg {stream_url}"
                 })

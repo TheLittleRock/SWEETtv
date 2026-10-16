@@ -58,12 +58,14 @@ def clean_id(raw_id: str) -> int:
 @router.get("/playlist.m3u", response_class=Response)
 @router.get("/playlist.m3u8", response_class=Response)
 @router.get("/playlist_clean.m3u", response_class=Response)
+@router.get("/playlist_bare.m3u", response_class=Response)
 def get_playlist(
     request: Request,
     quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best' (highest bitrate), '1080p', '720p'"),
     catchup: Optional[str] = Query(None, description="Catchup mode: 'vod', 'default', 'none', '0'"),
     no_epg: Optional[bool] = Query(False, description="Omit url-tvg header to avoid triggering automatic EPG import"),
-    legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs")
+    legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs"),
+    bare: Optional[bool] = Query(False, description="Ultra-minimal M3U with no attributes (for buggy parsers)")
 ):
     """
     Returns M3U/M3U8 playlist with full channel lineup, category groups, logos,
@@ -75,15 +77,17 @@ def get_playlist(
             detail="Server is not logged in to Sweet.tv. Please authenticate first via Web UI."
         )
 
-    # If requested via /playlist_clean.m3u, automatically omit url-tvg header
-    is_clean = no_epg or request.url.path.endswith("playlist_clean.m3u")
+    # If requested via /playlist_clean.m3u or /playlist_bare.m3u
+    is_bare = bool(bare) or request.url.path.endswith("playlist_bare.m3u")
+    is_clean = is_bare or no_epg or request.url.path.endswith("playlist_clean.m3u")
     base_url = get_effective_base_url(request)
     playlist_text = generate_m3u_playlist(
         base_url,
         quality=quality or config.default_quality,
         catchup=catchup,
         no_epg=is_clean,
-        legacy_id=bool(legacy_id)
+        legacy_id=bool(legacy_id),
+        bare=is_bare
     )
 
     return Response(
