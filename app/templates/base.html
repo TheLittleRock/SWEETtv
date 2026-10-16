@@ -3,14 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Sweet.tv IPTV Server & Web TV{% endblock %}</title>
+    <title>{% block title %}Sweet.tv IPTV Server &amp; Web TV{% endblock %}</title>
     <link rel="icon" type="image/png" href="https://staticeu.sweet.tv/images/v2/icons/categories/1000.png">
+    
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <!-- Hls.js for Web Player -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#030712',
+                        card: '#0f172a',
+                        border: '#1e293b',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Hls.js for Video Playback -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="/static/css/styles.css">
     {% block head %}{% endblock %}
@@ -18,7 +42,7 @@
 <body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-white">
 
     <!-- Top Navigation Bar -->
-    <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
+    <header class="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <a href="/" class="flex items-center gap-3 group">
@@ -34,15 +58,15 @@
                 </a>
             </div>
 
-            <!-- Nav Tabs -->
-            <nav class="hidden md:flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800/80">
+            <!-- Desktop Nav Tabs -->
+            <nav class="hidden md:flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
                 <button class="nav-tab active" data-tab="player">
                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     Live TV
                 </button>
                 <button class="nav-tab" data-tab="links">
                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                    Playlists & EPG
+                    Playlists &amp; EPG
                 </button>
                 <button class="nav-tab" data-tab="status">
                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
@@ -58,13 +82,13 @@
                 </button>
             </nav>
 
-            <!-- Status Pill & Auth button -->
+            <!-- Status Badge & Connect Button -->
             <div class="flex items-center gap-3">
-                <div id="header-status-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors bg-slate-800 text-slate-300 border-slate-700">
+                <div id="header-status-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border bg-slate-800 text-slate-300 border-slate-700">
                     <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse" id="status-indicator-dot"></span>
                     <span id="status-text">Checking...</span>
                 </div>
-                <button id="btn-header-auth" class="btn-primary text-xs px-3 py-1.5">
+                <button id="btn-header-auth" class="btn-primary text-xs px-3.5 py-1.5">
                     Connect
                 </button>
             </div>
@@ -97,7 +121,7 @@
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
                 </div>
                 <h3 class="text-xl font-bold text-white mb-2">Connect Sweet.tv Account</h3>
-                <p class="text-sm text-slate-400 mb-6">Enter the activation code on Sweet.tv or scan the QR code with your mobile camera.</p>
+                <p class="text-xs text-slate-400 mb-6">Enter the activation code on Sweet.tv or scan the QR code with your phone.</p>
 
                 <!-- Loading Spinner -->
                 <div id="modal-auth-loading" class="py-8">
@@ -119,7 +143,7 @@
                     </div>
 
                     <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 flex flex-col items-center">
-                        <span class="text-xs text-slate-400 mb-2">Or scan with Sweet.tv app / phone</span>
+                        <span class="text-xs text-slate-400 mb-2">Or scan with phone / Sweet.tv app</span>
                         <img id="modal-qr-image" src="" alt="QR Code" class="w-44 h-44 rounded-lg bg-white p-2 border border-slate-700">
                     </div>
 
@@ -139,7 +163,7 @@
     <footer class="mt-auto border-t border-slate-800/80 bg-slate-950 py-6 text-center text-xs text-slate-500">
         <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div>
-                Sweet.tv IPTV Proxy Server &bull; Modern Standalone Edition
+                Sweet.tv IPTV Proxy Server &bull; High Quality HLS Edition
             </div>
             <div class="text-slate-400">
                 Acknowledging &amp; based on <a href="https://github.com/david-hazi/plugin.video.sweettv" target="_blank" class="hover:text-cyan-400 underline">plugin.video.sweettv</a> (david-hazi) &amp; <a href="https://github.com/mbebe/blomqvist" target="_blank" class="hover:text-cyan-400 underline">blomqvist</a> (mbebe)
@@ -147,7 +171,7 @@
         </div>
     </footer>
 
-    <!-- App Scripts -->
+    <!-- Scripts -->
     <script src="/static/js/app.js"></script>
     <script src="/static/js/player.js"></script>
     {% block scripts %}{% endblock %}

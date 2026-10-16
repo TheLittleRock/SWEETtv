@@ -181,7 +181,13 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 
 ## 📺 Client Configuration
 
-### 1. Kodi (PVR IPTV Simple Client)
+### 1. IPTVnator (Windows / Mac / Linux)
+1. In IPTVnator, click **Add via URL**.
+2. Enter the Playlist URL: `http://<server-ip>:5000/playlist.m3u` (or `?quality=best` for highest bitrate).
+3. In Playlist Settings, set the EPG URL to: `http://<server-ip>:5000/epg.xml`.
+4. Click **Save** and start watching. Streams load automatically with native HLS playback.
+
+### 2. Kodi (PVR IPTV Simple Client)
 1. Install **PVR IPTV Simple Client** in Kodi:
    - *Settings &rarr; Add-ons &rarr; Install from repository &rarr; PVR clients &rarr; PVR IPTV Simple Client*.
 2. Open add-on settings:
@@ -193,13 +199,13 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
      - Query format: `{catchup-id}`
      - Catchup days: `7`
 
-### 2. TiviMate / OTT Navigator (Android TV)
+### 3. TiviMate / OTT Navigator (Android TV)
 1. Go to **Settings &rarr; Playlists &rarr; Add Playlist &rarr; M3U Playlist**.
 2. Enter URL: `https://tv.yourdomain.com/playlist.m3u` (or `?quality=best`).
 3. Add TV Guide (EPG): `https://tv.yourdomain.com/epg.xml`.
 4. Catchup Type: Set to **Xtream Codes / Flussonic / VOD**.
 
-### 3. VLC Media Player
+### 4. VLC Media Player
 - Go to **Media &rarr; Open Network Stream...** (Ctrl+N).
 - Paste `https://tv.yourdomain.com/playlist.m3u` and click **Play**.
 
@@ -216,8 +222,10 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 | `/playlist.m3u?quality=1080p` | `GET` | M3U8 Playlist (Targets 1080p Full HD) |
 | `/epg.xml` | `GET` | XMLTV Electronic Program Guide |
 | `/epg.xml.gz` | `GET` | Gzip-compressed XMLTV EPG for fast downloads |
-| `/play/{channel_id}` | `GET` | Stream resolver for live channel (302 CDN redirect) |
-| `/play/{channel_id}/{epg_id}` | `GET` | Stream resolver for 7-day catchup archive program |
+| `/stream/{channel_id}.m3u8` | `GET` | Main HLS stream master manifest endpoint |
+| `/stream/{channel_id}/{epg_id}.m3u8` | `GET` | 7-day catchup archive replay stream |
+| `/stream/variant.m3u8` | `GET` | HLS variant manifest proxy with absolute TS URLs |
+| `/play/{channel_id}` | `GET` | Legacy/shorthand stream resolver |
 | `/api/status` | `GET` | Server, authentication, and channel status |
 | `/api/channels` | `GET` | JSON list of channels with categories and EPG now/next |
 | `/api/stream/{channel_id}/info`| `GET` | Stream variant inspector (resolutions, bitrates, codecs) |

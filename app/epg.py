@@ -4,7 +4,6 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
 
 from app.client import client
 from app.config import config
@@ -64,6 +63,7 @@ def generate_m3u_playlist(base_url: str, quality: Optional[str] = None) -> str:
     """
     Generates standard M3U/M3U8 playlist with full IPTV metadata,
     category groupings, channel logos, and catchup replay tags.
+    Compatible with IPTVnator, Kodi PVR IPTV Simple Client, TiviMate, OTT Navigator, VLC.
     """
     data = get_cached_channels(need_epg=False)
     if not data or data.get("status") != "OK":
@@ -72,11 +72,8 @@ def generate_m3u_playlist(base_url: str, quality: Optional[str] = None) -> str:
     categories: Dict[int, str] = {cat.get("id"): cat.get("caption", "") for cat in data.get("categories", [])}
 
     q_param = f"?quality={quality}" if quality and quality != "auto" else ""
-    encoded_ua = quote(client.DEFAULT_UA)
-    encoded_ref = quote("https://sweet.tv/")
-    header_suffix = f"|User-Agent={encoded_ua}&Referer={encoded_ref}"
 
-    lines = ["#EXTM3U url-tvg=\"{}/epg.xml\"".format(base_url)]
+    lines = [f'#EXTM3U url-tvg="{base_url}/epg.xml"']
 
     for ch in data.get("list", []):
         if not ch.get("available"):
@@ -90,18 +87,18 @@ def generate_m3u_playlist(base_url: str, quality: Optional[str] = None) -> str:
         cat_names = [categories[c] for c in ch.get("category", []) if c in categories and c != 1000]
         group_title = ";".join(cat_names) if cat_names else "General"
 
-        stream_url_base = f"{base_url}/play/{cid}"
+        # Clean standard stream URL ending with .m3u8 for full player compatibility
+        stream_link = f"{base_url}/stream/{cid}.m3u8{q_param}"
 
         catchup_tag = ""
         if ch.get("catchup"):
             catchup_days = max(1, int(ch.get("catchup_duration", 7) or 7))
-            catchup_tag = f'catchup="vod" catchup-source="{stream_url_base}/{{catchup-id}}{q_param}{header_suffix}" catchup-days="{catchup_days}"'
+            catchup_source = f"{base_url}/stream/{cid}/{{catchup-id}}.m3u8{q_param}"
+            catchup_tag = f'catchup="vod" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
 
         extinf = f'#EXTINF:-1 tvg-id="{cid}.id.com" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" {catchup_tag},{cname}'.strip()
-        stream_link = f"{stream_url_base}{q_param}{header_suffix}"
 
         lines.append(extinf)
-        lines.append("#EXTVLCOPT:http-referrer=https://sweet.tv/")
         lines.append(f"#EXTVLCOPT:http-user-agent={client.DEFAULT_UA}")
         lines.append(stream_link)
 
@@ -162,7 +159,6 @@ def generate_xmltv_epg(country_code: Optional[str] = None, force_refresh: bool =
 
                 ET.SubElement(prog_elem, "title", lang=lang).text = title_text
 
-                # Optional description / plot
                 desc = item.get("description") or item.get("genre")
                 if desc:
                     ET.SubElement(prog_elem, "desc", lang=lang).text = desc

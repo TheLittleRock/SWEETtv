@@ -1,20 +1,24 @@
-/* Sweet.tv IPTV Proxy Server Modern Dark Theme */
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Sweet.tv IPTV Proxy Server Custom Stylesheet */
 
 :root {
-    --color-bg: #030712;
-    --color-surface: #0f172a;
-    --color-border: #1e293b;
-    --color-accent: #06b6d4;
+    --bg-dark: #030712;
+    --card-bg: #0f172a;
+    --border-color: #1e293b;
+    --accent-cyan: #06b6d4;
+    --accent-blue: #2563eb;
 }
 
 body {
-    background-color: var(--color-bg);
+    background-color: var(--bg-dark);
     color: #f1f5f9;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+/* Strict Hide Rule */
+.hidden {
+    display: none !important;
 }
 
 /* Custom Scrollbars */
@@ -56,6 +60,8 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
+    border: none;
     box-shadow: 0 2px 4px rgba(6, 182, 212, 0.2);
 }
 .btn-primary:hover {
@@ -78,6 +84,7 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    cursor: pointer;
 }
 .btn-secondary:hover {
     background-color: #334155;
@@ -89,13 +96,15 @@ body {
 .nav-tab {
     display: inline-flex;
     align-items: center;
-    padding: 0.4rem 0.85rem;
+    padding: 0.45rem 0.9rem;
     border-radius: 0.65rem;
     font-size: 0.8125rem;
     font-weight: 500;
     color: #94a3b8;
+    background: transparent;
     transition: all 0.2s ease;
     border: 1px solid transparent;
+    cursor: pointer;
 }
 .nav-tab:hover {
     color: #f8fafc;
@@ -104,7 +113,7 @@ body {
 .nav-tab.active {
     color: #38bdf8;
     background-color: #1e293b;
-    border-color: rgba(56, 189, 248, 0.2);
+    border-color: rgba(56, 189, 248, 0.25);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
@@ -112,8 +121,11 @@ body {
     padding: 0.4rem 0.6rem;
     border-radius: 0.5rem;
     color: #94a3b8;
+    background: transparent;
+    border: none;
     font-weight: 500;
     transition: all 0.2s ease;
+    cursor: pointer;
 }
 .mobile-nav-tab.active {
     color: #38bdf8;
@@ -122,7 +134,7 @@ body {
 
 /* Category Filter Pills */
 .cat-pill {
-    padding: 0.25rem 0.75rem;
+    padding: 0.3rem 0.75rem;
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 500;
@@ -131,6 +143,7 @@ body {
     color: #94a3b8;
     border: 1px solid #1e293b;
     transition: all 0.15s ease;
+    cursor: pointer;
 }
 .cat-pill:hover {
     color: #f1f5f9;
@@ -210,9 +223,10 @@ body {
     letter-spacing: 0.05em;
 }
 
-/* Inputs */
+/* Copy Input */
 .input-copy {
     width: 100%;
+    box-sizing: border-box;
     background-color: #030712;
     border: 1px solid #1e293b;
     border-radius: 0.65rem;
@@ -225,8 +239,10 @@ body {
     border-color: #38bdf8;
 }
 
+/* Form Input */
 .input-form {
     width: 100%;
+    box-sizing: border-box;
     background-color: #030712;
     border: 1px solid #334155;
     border-radius: 0.65rem;
@@ -249,6 +265,12 @@ body {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.8125rem;
     border: 1px solid #1e293b;
+}
+
+/* Video Player */
+video {
+    background: #000;
+    max-height: 100%;
 }
 
 /* Animations */

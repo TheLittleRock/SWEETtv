@@ -2,6 +2,7 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote, unquote, urlparse
 import requests
 
 from app.client import client
@@ -108,8 +109,9 @@ def get_stream_details(channel_id: int, epg_id: Optional[int] = None) -> Optiona
     if not master_url:
         return None
 
-    # Inspect master playlist to fetch variants
+    # Inspect master playlist to fetch variants using Chrome headers
     variants: List[Dict[str, Any]] = []
+    raw_master_text = ""
     try:
         r = client.session.get(
             master_url,
@@ -122,7 +124,8 @@ def get_stream_details(channel_id: int, epg_id: Optional[int] = None) -> Optiona
             timeout=8,
         )
         if r.status_code == 200:
-            variants = parse_master_m3u8(r.text)
+            raw_master_text = r.text
+            variants = parse_master_m3u8(raw_master_text)
     except Exception as e:
         logger.warning(f"Could not inspect variants for master URL {master_url}: {e}")
 
@@ -130,6 +133,7 @@ def get_stream_details(channel_id: int, epg_id: Optional[int] = None) -> Optiona
         "channel_id": channel_id,
         "epg_id": epg_id,
         "master_url": master_url,
+        "master_content": raw_master_text,
         "scheme": raw.get("scheme", "HTTP_HLS"),
         "stream_id": raw.get("stream_id"),
         "variants": variants,
@@ -142,50 +146,93 @@ def get_stream_details(channel_id: int, epg_id: Optional[int] = None) -> Optiona
     return result
 
 
-def resolve_stream_url(
+def build_proxy_master_m3u8(
     channel_id: int,
+    base_url: str,
     epg_id: Optional[int] = None,
     quality: Optional[str] = None
-) -> Optional[str]:
+) -> Tuple[str, str]:
     """
-    Resolves the target stream URL.
-    - quality in ('auto', None): returns master playlist (adaptive multi-bitrate).
-    - quality in ('best', 'highest', 'max', '4k', 'uhd'): returns direct highest bandwidth variant.
-    - quality matching height (e.g. '1080p', '720p', '360p'): returns variant matching resolution.
+    Builds a proxy HLS manifest for the channel.
+    Rewrites variant URLs so players fetch variants via our proxy, bypassing
+    Sweet.tv's strict user-agent blocking on manifest endpoints.
+    Returns (content, content_type).
     """
     details = get_stream_details(channel_id, epg_id)
-    if not details:
-        return None
+    if not details or not details.get("master_content"):
+        return "#EXTM3U\n", "application/vnd.apple.mpegurl"
 
     selected_quality = (quality or config.default_quality).lower().strip()
 
-    if selected_quality in ("auto", "", "adaptive"):
-        return details["master_url"]
+    # If 'best' / 'highest' / '4k' requested, redirect to highest quality variant directly
+    if selected_quality in ("best", "highest", "max", "4k", "uhd") and details.get("highest_variant"):
+        highest_url = details["highest_variant"]["url"]
+        return build_proxy_variant_m3u8(highest_url, base_url)
 
-    variants = details.get("variants", [])
-    if not variants:
-        # If no variants could be parsed, fall back to master URL
-        return details["master_url"]
-
-    if selected_quality in ("best", "highest", "max", "4k", "uhd"):
-        # First variant is highest bandwidth
-        return variants[0]["url"]
-
-    # Match specific resolution e.g. 1080p, 720p, 360p
+    # Specific height matching (e.g. 1080p, 720p)
     target_height = None
     if selected_quality.endswith("p") and selected_quality[:-1].isdigit():
         target_height = int(selected_quality[:-1])
     elif selected_quality.isdigit():
         target_height = int(selected_quality)
 
-    if target_height:
-        # Find exact or closest variant
-        for v in variants:
+    if target_height and details.get("variants"):
+        for v in details["variants"]:
             if v["height"] == target_height:
-                return v["url"]
-        # Find closest variant if exact not found
-        variants_by_diff = sorted(variants, key=lambda v: abs(v["height"] - target_height))
-        return variants_by_diff[0]["url"]
+                return build_proxy_variant_m3u8(v["url"], base_url)
 
-    # Fallback to master URL
-    return details["master_url"]
+    # Adaptive Master: Rewrite variant URLs to point through our proxy
+    lines = details["master_content"].splitlines()
+    rewritten = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("http"):
+            encoded_url = quote(stripped, safe="")
+            rewritten.append(f"{base_url}/stream/variant.m3u8?url={encoded_url}")
+        else:
+            rewritten.append(line)
+
+    return "\n".join(rewritten) + "\n", "application/vnd.apple.mpegurl"
+
+
+def build_proxy_variant_m3u8(variant_url: str, base_url: str) -> Tuple[str, str]:
+    """
+    Fetches the variant M3U8 from Sweet.tv CDN using legitimate headers,
+    rewrites relative TS segment paths to absolute URLs (which Sweet.tv CDN permits without UA check).
+    """
+    try:
+        r = client.session.get(
+            variant_url,
+            headers={
+                "User-Agent": client.DEFAULT_UA,
+                "Referer": "https://sweet.tv/",
+                "Origin": "https://sweet.tv",
+            },
+            verify=False,
+            timeout=8,
+        )
+        if r.status_code != 200:
+            logger.error(f"Failed fetching variant {variant_url}: HTTP {r.status_code}")
+            return "#EXTM3U\n", "application/vnd.apple.mpegurl"
+
+        parsed = urlparse(variant_url)
+        node_host = f"{parsed.scheme}://{parsed.netloc}"
+
+        lines = r.text.splitlines()
+        rewritten = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("/"):
+                # Absolute path on node CDN: turn into full URL
+                rewritten.append(f"{node_host}{stripped}")
+            elif not stripped.startswith("#") and stripped and not stripped.startswith("http"):
+                # Relative path: resolve against node_host
+                parent = "/".join(parsed.path.split("/")[:-1])
+                rewritten.append(f"{node_host}{parent}/{stripped}")
+            else:
+                rewritten.append(line)
+
+        return "\n".join(rewritten) + "\n", "application/vnd.apple.mpegurl"
+    except Exception as e:
+        logger.error(f"Error fetching variant playlist {variant_url}: {e}")
+        return "#EXTM3U\n", "application/vnd.apple.mpegurl"

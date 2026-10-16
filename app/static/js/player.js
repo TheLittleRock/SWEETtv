@@ -33,6 +33,7 @@ function formatBitrate(bps) {
 
 // Load Channel Lineup from API
 async function loadChannels() {
+    if (!channelsListEl) return;
     try {
         const res = await fetch("/api/channels");
         if (res.status === 401) {
@@ -74,7 +75,6 @@ function renderCategories(categories) {
 
     let html = `<button class="cat-pill ${activeCategory === 'all' ? 'active' : ''}" data-cat="all">All</button>`;
     categories.forEach(cat => {
-        // Skip 'All' since we have a dedicated button
         if (cat.id !== 1000) {
             html += `<button class="cat-pill ${activeCategory === cat.caption ? 'active' : ''}" data-cat="${cat.caption}">${cat.caption}</button>`;
         }
@@ -82,7 +82,7 @@ function renderCategories(categories) {
 
     categoryPillsEl.innerHTML = html;
 
-    // Add click listeners
+    // Attach click listeners
     categoryPillsEl.querySelectorAll(".cat-pill").forEach(pill => {
         pill.addEventListener("click", () => {
             categoryPillsEl.querySelectorAll(".cat-pill").forEach(p => p.classList.remove("active"));
@@ -97,17 +97,15 @@ function renderCategories(categories) {
 function renderChannels() {
     if (!channelsListEl) return;
 
-    const searchTerm = (searchInput.value || "").toLowerCase().trim();
+    const searchTerm = (searchInput ? searchInput.value || "" : "").toLowerCase().trim();
 
     const filtered = allChannels.filter(ch => {
-        // Search filter
         const matchSearch = ch.name.toLowerCase().includes(searchTerm) ||
                             (ch.current_programme && ch.current_programme.title.toLowerCase().includes(searchTerm));
         if (!matchSearch) return false;
 
-        // Category filter
         if (activeCategory === "all") return true;
-        return ch.categories.includes(activeCategory);
+        return ch.categories && ch.categories.includes(activeCategory);
     });
 
     if (filtered.length === 0) {
@@ -144,7 +142,6 @@ function renderChannels() {
         `;
     }).join("");
 
-    // Attach click listeners to cards
     channelsListEl.querySelectorAll(".channel-card").forEach(card => {
         card.addEventListener("click", () => {
             const cid = parseInt(card.getAttribute("data-id"));
@@ -158,7 +155,7 @@ function renderChannels() {
 async function selectChannel(channel) {
     currentChannel = channel;
 
-    // Update active state in list
+    // Update active highlight
     document.querySelectorAll(".channel-card").forEach(c => {
         if (parseInt(c.getAttribute("data-id")) === channel.id) {
             c.classList.add("active");
@@ -167,7 +164,7 @@ async function selectChannel(channel) {
         }
     });
 
-    // Update Now Playing UI
+    // Update Now Playing Info
     const logoEl = document.getElementById("active-channel-logo");
     const nameEl = document.getElementById("active-channel-name");
     const catEl = document.getElementById("active-channel-category");
@@ -178,50 +175,60 @@ async function selectChannel(channel) {
     const nextProgBox = document.getElementById("active-next-prog-box");
     const nextProgTitle = document.getElementById("active-next-prog-title");
 
-    if (channel.icon) {
-        logoEl.src = channel.icon;
-        logoEl.classList.remove("hidden");
-    } else {
-        logoEl.classList.add("hidden");
+    if (logoEl) {
+        if (channel.icon) {
+            logoEl.src = channel.icon;
+            logoEl.classList.remove("hidden");
+        } else {
+            logoEl.classList.add("hidden");
+        }
     }
 
-    nameEl.textContent = channel.name;
+    if (nameEl) nameEl.textContent = channel.name;
 
-    if (channel.categories && channel.categories.length > 0) {
-        catEl.textContent = channel.categories.join(", ");
-        catEl.classList.remove("hidden");
-    } else {
-        catEl.classList.add("hidden");
+    if (catEl) {
+        if (channel.categories && channel.categories.length > 0) {
+            catEl.textContent = channel.categories.join(", ");
+            catEl.classList.remove("hidden");
+        } else {
+            catEl.classList.add("hidden");
+        }
     }
 
-    if (channel.catchup) {
-        catchupEl.classList.remove("hidden");
-    } else {
-        catchupEl.classList.add("hidden");
+    if (catchupEl) {
+        if (channel.catchup) {
+            catchupEl.classList.remove("hidden");
+        } else {
+            catchupEl.classList.add("hidden");
+        }
     }
 
-    if (channel.current_programme) {
-        const cp = channel.current_programme;
-        progTitleEl.textContent = cp.title;
-        progTimesEl.textContent = `${formatTimeHourMin(cp.start)} - ${formatTimeHourMin(cp.stop)}`;
-        progProgressEl.style.width = `${cp.progress}%`;
-    } else {
-        progTitleEl.textContent = "Live Broadcast";
-        progTimesEl.textContent = "Live";
-        progProgressEl.style.width = "100%";
+    if (progTitleEl) {
+        if (channel.current_programme) {
+            const cp = channel.current_programme;
+            progTitleEl.textContent = cp.title;
+            if (progTimesEl) progTimesEl.textContent = `${formatTimeHourMin(cp.start)} - ${formatTimeHourMin(cp.stop)}`;
+            if (progProgressEl) progProgressEl.style.width = `${cp.progress}%`;
+        } else {
+            progTitleEl.textContent = "Live Broadcast";
+            if (progTimesEl) progTimesEl.textContent = "Live";
+            if (progProgressEl) progProgressEl.style.width = "100%";
+        }
     }
 
-    if (channel.next_programme) {
-        nextProgBox.classList.remove("hidden");
-        nextProgTitle.textContent = `${formatTimeHourMin(channel.next_programme.start)} ${channel.next_programme.title}`;
-    } else {
-        nextProgBox.classList.add("hidden");
+    if (nextProgBox && nextProgTitle) {
+        if (channel.next_programme) {
+            nextProgBox.classList.remove("hidden");
+            nextProgTitle.textContent = `${formatTimeHourMin(channel.next_programme.start)} ${channel.next_programme.title}`;
+        } else {
+            nextProgBox.classList.add("hidden");
+        }
     }
 
-    // Inspect Stream Variants for Quality Selector
+    // Inspect stream info
     fetchStreamInfo(channel.id);
 
-    // Play Stream
+    // Play stream
     playCurrentChannelStream();
 }
 
@@ -241,10 +248,11 @@ async function fetchStreamInfo(channelId) {
 
 // Populate Quality Selector Options
 function updateQualitySelectOptions(variants) {
+    if (!qualitySelect) return;
     const currentVal = qualitySelect.value;
     let optionsHtml = `
         <option value="auto">Auto (Adaptive Multi-Bitrate)</option>
-        <option value="best">Highest Available Bitrate (Force Max)</option>
+        <option value="best">Highest Available Bitrate (Force 4K/FHD)</option>
     `;
 
     if (variants && variants.length > 0) {
@@ -253,9 +261,8 @@ function updateQualitySelectOptions(variants) {
             optionsHtml += `<option value="${v.name}">${v.name} &bull; ${v.resolution} ${bitrateStr}</option>`;
         });
 
-        // Update codec badge from highest variant
         const highest = variants[0];
-        if (highest && highest.codecs) {
+        if (codecBadge && highest && highest.codecs) {
             codecBadge.textContent = highest.codecs.includes("hev") ? "HEVC / AAC" : "H.264 / AAC";
         }
     } else {
@@ -268,21 +275,21 @@ function updateQualitySelectOptions(variants) {
 
     qualitySelect.innerHTML = optionsHtml;
 
-    // Restore selected value if valid, else keep current
     if ([...qualitySelect.options].some(o => o.value === currentVal)) {
         qualitySelect.value = currentVal;
     }
 }
 
-// Play Channel Stream
+// Play Channel Stream using HLS Proxy
 function playCurrentChannelStream() {
-    if (!currentChannel) return;
+    if (!currentChannel || !videoEl) return;
 
-    placeholderEl.classList.add("hidden");
-    loadingEl.classList.remove("hidden");
+    if (placeholderEl) placeholderEl.classList.add("hidden");
+    if (loadingEl) loadingEl.classList.remove("hidden");
 
-    const quality = qualitySelect.value;
-    const streamEndpoint = `/play/${currentChannel.id}?quality=${quality}`;
+    const quality = qualitySelect ? qualitySelect.value : "auto";
+    // Target the clean, standard HLS proxy endpoint
+    const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}`;
 
     if (Hls.isSupported()) {
         if (hlsInstance) {
@@ -301,83 +308,95 @@ function playCurrentChannelStream() {
         hlsInstance.attachMedia(videoEl);
 
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-            loadingEl.classList.add("hidden");
+            if (loadingEl) loadingEl.classList.add("hidden");
             videoEl.play().catch(() => {
-                // Autoplay policy prevented playback until user interaction
-                console.log("Autoplay blocked, waiting for user click.");
+                console.log("Autoplay waiting for user gesture.");
             });
         });
 
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
             if (data.fatal) {
-                loadingEl.classList.add("hidden");
+                if (loadingEl) loadingEl.classList.add("hidden");
                 switch (data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
-                        console.warn("Fatal network error in HLS, attempting recovery...");
+                        console.warn("Network error in HLS, retrying...");
                         hlsInstance.startLoad();
                         break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.warn("Fatal media error in HLS, attempting recovery...");
+                        console.warn("Media error in HLS, attempting recovery...");
                         hlsInstance.recoverMediaError();
                         break;
                     default:
-                        console.error("Unrecoverable stream error:", data);
+                        console.error("Fatal unrecoverable stream error:", data);
                         hlsInstance.destroy();
-                        showToast("Stream loading error. Sweet.tv stream may be rebuffering.", "error");
+                        if (typeof showToast === 'function') {
+                            showToast("Error buffering stream from provider.", "error");
+                        }
                         break;
                 }
             }
         });
     } else if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        // Native HLS (Safari on iOS/macOS)
+        // Native HLS (Safari on macOS/iOS)
         videoEl.src = streamEndpoint;
         videoEl.addEventListener("loadedmetadata", () => {
-            loadingEl.classList.add("hidden");
+            if (loadingEl) loadingEl.classList.add("hidden");
             videoEl.play();
         });
     } else {
-        loadingEl.classList.add("hidden");
-        showToast("Your browser does not support HLS streaming.", "error");
+        if (loadingEl) loadingEl.classList.add("hidden");
+        if (typeof showToast === 'function') {
+            showToast("HLS playback is not supported by your browser.", "error");
+        }
     }
 }
 
-// Event Listeners for Player Controls
+// Event Listeners
 document.addEventListener("DOMContentLoaded", () => {
-    // Search input debounce
-    let searchTimeout = null;
-    searchInput.addEventListener("input", () => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(renderChannels, 150);
-    });
+    if (searchInput) {
+        let searchTimeout = null;
+        searchInput.addEventListener("input", () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(renderChannels, 150);
+        });
+    }
 
-    // Quality Selector change
-    qualitySelect.addEventListener("change", () => {
-        playCurrentChannelStream();
-        showToast(`Stream quality set to: ${qualitySelect.options[qualitySelect.selectedIndex].text}`, "info");
-    });
-
-    // Reload stream button
-    document.getElementById("btn-reload-stream").addEventListener("click", () => {
-        playCurrentChannelStream();
-        showToast("Reloading live stream...", "info");
-    });
-
-    // Fullscreen button
-    document.getElementById("btn-fullscreen-player").addEventListener("click", () => {
-        if (!document.fullscreenElement) {
-            if (videoEl.requestFullscreen) {
-                videoEl.requestFullscreen();
-            } else if (videoEl.webkitRequestFullscreen) {
-                videoEl.webkitRequestFullscreen();
+    if (qualitySelect) {
+        qualitySelect.addEventListener("change", () => {
+            playCurrentChannelStream();
+            if (typeof showToast === 'function') {
+                showToast(`Stream quality set to: ${qualitySelect.options[qualitySelect.selectedIndex].text}`, "info");
             }
-        } else {
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            }
-        }
-    });
+        });
+    }
 
-    // Initial load
+    const reloadBtn = document.getElementById("btn-reload-stream");
+    if (reloadBtn) {
+        reloadBtn.addEventListener("click", () => {
+            playCurrentChannelStream();
+            if (typeof showToast === 'function') {
+                showToast("Reloading stream...", "info");
+            }
+        });
+    }
+
+    const fsBtn = document.getElementById("btn-fullscreen-player");
+    if (fsBtn && videoEl) {
+        fsBtn.addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+                if (videoEl.requestFullscreen) {
+                    videoEl.requestFullscreen();
+                } else if (videoEl.webkitRequestFullscreen) {
+                    videoEl.webkitRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        });
+    }
+
     window.loadChannels = loadChannels;
     loadChannels();
 });
