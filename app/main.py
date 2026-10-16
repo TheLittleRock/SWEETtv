@@ -10,6 +10,8 @@ from app.epg import get_cached_channels
 from app.routes.api import router as api_router
 from app.routes.iptv import router as iptv_router
 from app.routes.views import router as views_router
+from app.routes.xtream import router as xtream_router
+from app.version import APP_NAME, APP_VERSION
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,7 +25,7 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("==================================================")
-    logger.info("  Sweet.tv IPTV Proxy Server Starting")
+    logger.info(f"  {APP_NAME} v{APP_VERSION} Starting")
     logger.info(f"  Country Code: {config.country_code}")
     logger.info(f"  Authentication Status: {'Logged In' if config.is_logged else 'Not Logged In'}")
     logger.info(f"  Default Quality: {config.default_quality}")
@@ -47,11 +49,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Sweet.tv IPTV Proxy Server",
-    description="High-performance IPTV proxy, M3U/EPG generator, and Web TV player for Sweet.tv.",
-    version="1.0.0",
+    title=APP_NAME,
+    description="High-performance IPTV proxy, M3U/EPG generator, Xtream Codes API, and Web TV player for Sweet.tv.",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
+
+# Version header middleware for debugging & deployment verification
+@app.middleware("http")
+async def add_version_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-App-Version"] = APP_VERSION
+    response.headers["X-Application"] = APP_NAME
+    return response
 
 # Enable CORS for IPTV web players & browsers
 app.add_middleware(
@@ -71,6 +81,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 # Include routes
 app.include_router(views_router)
 app.include_router(iptv_router)
+app.include_router(xtream_router)
 app.include_router(api_router)
 
 

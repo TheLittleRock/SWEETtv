@@ -8,6 +8,7 @@ from app.client import client
 from app.config import config
 from app.epg import get_cached_channels, invalidate_cache
 from app.stream import get_stream_details
+from app.version import APP_NAME, APP_VERSION
 
 logger = logging.getLogger("SweetTV.Routes.API")
 router = APIRouter(prefix="/api", tags=["API"])
@@ -23,9 +24,19 @@ class SettingsUpdate(BaseModel):
     m3u_catchup: Optional[bool] = None
 
 
+@router.get("/version")
+def get_version() -> Dict[str, Any]:
+    """Returns application version and build info."""
+    return {
+        "version": APP_VERSION,
+        "name": APP_NAME,
+        "uptime_seconds": int(time.time() - SERVER_START_TIME)
+    }
+
+
 @router.get("/status")
 def get_status() -> Dict[str, Any]:
-    """Returns application status, auth state, and stream statistics."""
+    """Returns application status, auth state, version, and stream statistics."""
     now = int(time.time())
     last_update = int(config.get("access_token_last_update", 0))
     lifetime = int(config.get("access_token_lifetime", 0))
@@ -35,6 +46,7 @@ def get_status() -> Dict[str, Any]:
     total_channels = len(channel_data.get("list", [])) if channel_data else 0
 
     return {
+        "version": APP_VERSION,
         "logged": config.is_logged,
         "country_code": config.country_code,
         "mac": config.get("mac"),

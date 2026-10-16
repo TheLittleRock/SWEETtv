@@ -472,12 +472,25 @@ async function loadCatchupSchedule(channelId) {
             return;
         }
 
-        catchupListEl.innerHTML = replayable.map(prog => {
+        let lastDateHeader = "";
+        const itemsHtml = [];
+
+        replayable.forEach(prog => {
             const dateStr = formatProgrammeDate(prog.start);
+            if (dateStr !== lastDateHeader) {
+                lastDateHeader = dateStr;
+                itemsHtml.push(`
+                    <div class="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm py-1.5 px-3 rounded-lg text-[11px] font-bold text-cyan-400 border border-slate-800 shadow-sm flex items-center justify-between my-2">
+                        <span>📅 ${dateStr}</span>
+                        <span class="text-[10px] text-slate-400 font-mono font-normal">7-Day Archive</span>
+                    </div>
+                `);
+            }
+
             const timeRange = `${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)}`;
             const isCurrentlyPlayingThis = currentReplayProgram && currentReplayProgram.id === prog.id;
 
-            return `
+            itemsHtml.push(`
                 <div class="catchup-item flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer group ${
                     isCurrentlyPlayingThis
                         ? 'bg-cyan-950/40 border-cyan-600/80 text-cyan-300'
@@ -485,7 +498,6 @@ async function loadCatchupSchedule(channelId) {
                 }" data-prog-id="${prog.id}">
                     <div class="flex-1 min-w-0 pr-3">
                         <div class="flex items-center gap-2 mb-1">
-                            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">${dateStr}</span>
                             <span class="text-[11px] font-mono text-cyan-400 font-semibold">${timeRange}</span>
                             ${isCurrentlyPlayingThis ? '<span class="text-[10px] font-bold text-amber-400 animate-pulse">Now Playing</span>' : ''}
                         </div>
@@ -496,8 +508,10 @@ async function loadCatchupSchedule(channelId) {
                         <span>${isCurrentlyPlayingThis ? 'Restart' : 'Watch'}</span>
                     </button>
                 </div>
-            `;
-        }).join("");
+            `);
+        });
+
+        catchupListEl.innerHTML = itemsHtml.join("");
 
         // Attach click listeners to catchup items
         catchupListEl.querySelectorAll(".catchup-item").forEach(item => {

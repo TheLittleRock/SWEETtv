@@ -147,6 +147,31 @@ volumes:
 
 ---
 
+### 🔄 How to Update to the Latest Version in Portainer
+
+When a new version is released on GitHub, Docker and Portainer do **not** automatically pull new images by default unless instructed to re-pull:
+
+#### If deployed as a Stack:
+1. In Portainer, go to **Stacks** &rarr; Click `sweettv` &rarr; Go to the **Editor** tab.
+2. Click **Update the stack**.
+3. **CRITICAL**: Toggle **Re-pull image and redeploy** to **ON**.
+4. Click **Update**. Portainer pulls the newest build from GHCR and restarts the container seamlessly.
+
+#### If deployed as a standalone Container:
+1. In Portainer, go to **Containers** &rarr; Click `sweettv-proxy` (or your container name).
+2. Click the **Recreate** button in the top action bar.
+3. Toggle **Re-pull image** to **ON**.
+4. Click **Recreate**.
+
+#### How to Verify Your Container Updated:
+- **Web UI Header**: Check the version pill badge in the top navigation bar (e.g. `v1.2.0`).
+- **Web UI Status Tab**: Shows the Server Version card and links.
+- **API Endpoint**: Visit `https://tv.yourdomain.com/api/version` (returns `{"version": "1.2.0"}`).
+- **HTTP Header**: Every HTTP response includes the header `X-App-Version: 1.2.0`.
+- **Container Logs**: Check container logs for `Sweet.tv IPTV Proxy Server v1.2.0 Starting`.
+
+---
+
 ### Method 3: Local Docker Compose CLI
 
 ```bash
@@ -225,17 +250,37 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 
 ## 📺 Client Configuration
 
-### 1. IPTVnator (Windows / Mac / Linux)
+### 1. StreamCube (Web, Desktop & Android)
+
+StreamCube supports both **XTream Codes** and standard **M3U lists**:
+
+#### Recommended Method: XTream Server (Native JSON — 100% Error-Free)
+1. Open StreamCube and click **XTream Server** in the left sidebar.
+2. Enter the following parameters:
+   - **Server / Host URL**: `https://tv.yourdomain.com` (or `http://<server-ip>:5000`)
+   - **Uživatelské jméno (Username)**: `sweettv` (or any string)
+   - **Heslo (Password)**: `sweettv` (or any string)
+3. Click **Připojit (Connect)**. StreamCube will immediately load all channels, logos, categories, and 7-day EPG using native JSON without any M3U parsing or database syntax issues.
+
+#### Alternative Method: M3U Seznamy
+If you prefer adding via M3U:
+- **M3U URL**: `https://tv.yourdomain.com/playlist_clean.m3u?quality=best`
+- **EPG URL**: `https://tv.yourdomain.com/epg.xml`
+- *(Using `playlist_clean.m3u` prevents duplicate automatic EPG parsing triggers)*.
+
+---
+
+### 2. IPTVnator (Windows / Mac / Linux)
 1. In IPTVnator, click **Add via URL**.
 2. Playlist URL: `http://<server-ip>:5000/playlist.m3u` (or `https://tv.yourdomain.com/playlist.m3u?quality=best`).
 3. TV Guide (EPG) URL: `http://<server-ip>:5000/epg.xml`.
 4. Click **Save** and start watching.
 
-### 2. Kodi (PVR IPTV Simple Client)
+### 3. Kodi (PVR IPTV Simple Client)
 1. Install **PVR IPTV Simple Client** in Kodi:
    - *Settings &rarr; Add-ons &rarr; Install from repository &rarr; PVR clients &rarr; PVR IPTV Simple Client*.
 2. Open add-on settings:
-   - **General**: Set *M3U playlist URL* to `https://tv.yourdomain.com/playlist.m3u` (or `?quality=best` for maximum bitrate).
+   - **General**: Set *M3U playlist URL* to `https://tv.yourdomain.com/playlist.m3u?quality=best&catchup=vod`.
    - **EPG**: Set *XMLTV URL* to `https://tv.yourdomain.com/epg.xml.gz` (fast compressed format).
    - **Catchup**:
      - Enable Catchup: **Yes**
@@ -243,18 +288,17 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
      - Query format: `{catchup-id}`
      - Catchup days: `7`
 
-### 3. TiviMate / OTT Navigator (Android TV & Fire TV)
-1. Go to **Settings &rarr; Playlists &rarr; Add Playlist &rarr; M3U Playlist**.
-2. Enter URL: `https://tv.yourdomain.com/playlist.m3u` (or `?quality=best`).
-3. Add TV Guide (EPG): `https://tv.yourdomain.com/epg.xml`.
-4. Catchup: Set Catchup Type to **Xtream Codes / Flussonic / VOD**.
+### 4. TiviMate / OTT Navigator (Android TV & Fire TV)
+1. Go to **Settings &rarr; Playlists &rarr; Add Playlist &rarr; Xtream Codes**.
+2. Server URL: `https://tv.yourdomain.com`. Username: `sweettv`. Password: `sweettv`.
+3. TiviMate will automatically detect all live categories and 7-day catchup archive.
 
-### 4. Apple TV & iOS (UHF, iPlayTV, IPTVX)
+### 5. Apple TV & iOS (UHF, iPlayTV, IPTVX)
 1. Add new M3U playlist with URL: `https://tv.yourdomain.com/playlist.m3u`.
 2. Add EPG URL: `https://tv.yourdomain.com/epg.xml`.
 3. Catchup archive playback will work automatically using the embedded `catchup-source` tag.
 
-### 5. VLC Media Player
+### 6. VLC Media Player
 - Go to **Media &rarr; Open Network Stream...** (Ctrl+N).
 - Paste `https://tv.yourdomain.com/playlist.m3u` and click **Play**.
 
@@ -286,18 +330,23 @@ All settings can be configured via the Web UI Settings tab, or passed as environ
 | :--- | :---: | :--- |
 | `/` | `GET` | Web TV Player & Management Dashboard |
 | `/login` | `GET` | Dedicated device activation page with QR code |
-| `/playlist.m3u` | `GET` | M3U8 Playlist (Adaptive Multi-Bitrate) |
+| `/playlist.m3u` | `GET` | M3U8 Playlist (Adaptive Multi-Bitrate with clean numeric IDs) |
 | `/playlist.m3u?quality=best` | `GET` | M3U8 Playlist (Forces highest available bitrate / 4K UHD) |
-| `/playlist.m3u?quality=1080p` | `GET` | M3U8 Playlist (Targets 1080p Full HD) |
-| `/epg.xml` | `GET` | XMLTV Electronic Program Guide |
+| `/playlist.m3u?quality=best&catchup=vod` | `GET` | M3U8 Playlist with Kodi/TiviMate catchup replay tags |
+| `/playlist_clean.m3u` | `GET` | Clean M3U without `url-tvg` header (for manual EPG entry) |
+| `/epg.xml` | `GET` | XMLTV Electronic Program Guide (100% XMLTV DTD compliant) |
 | `/epg.xml.gz` | `GET` | Gzip-compressed XMLTV EPG for fast downloads |
+| `/player_api.php` | `GET/POST` | **Xtream Codes v2 API** (categories, channels, EPG JSON) |
+| `/live/{user}/{pass}/{id}.m3u8` | `GET` | Xtream Codes live HLS stream endpoint |
+| `/timeshift/{user}/{pass}/{d}/{start}/{id}.m3u8` | `GET` | Xtream Codes 7-day timeshift replay endpoint |
 | `/stream/{channel_id}.m3u8` | `GET` | Main HLS stream master manifest endpoint |
 | `/stream/{channel_id}/{epg_id}.m3u8` | `GET` | 7-day catchup archive replay stream |
 | `/stream/variant.m3u8` | `GET` | HLS variant manifest proxy with absolute TS URLs |
 | `/play/{channel_id}` | `GET` | Shorthand stream resolver |
-| `/api/status` | `GET` | Server, authentication, and channel status |
+| `/api/version` | `GET` | Application version check (`{"version": "1.2.0"}`) |
+| `/api/status` | `GET` | Server status, version, authentication, and channel counts |
 | `/api/channels` | `GET` | JSON list of channels with categories and EPG now/next |
-| `/api/channel/{id}/epg` | `GET` | 7-day program schedule with catchup replay availability |
+| `/api/channel/{id}/epg` | `GET` | Full 7-day program schedule with catchup replay availability |
 | `/api/stream/{channel_id}/info`| `GET` | Stream variant inspector (resolutions, bitrates, codecs) |
 | `/api/auth/start` | `POST` | Generates Sweet.tv device activation code and QR URL |
 | `/api/auth/status?code=...` | `GET` | Polls authentication status |

@@ -197,8 +197,8 @@ class SweetTVClient:
         logger.info("Logged out from Sweet.tv.")
         return True
 
-    def get_channels(self, need_epg: bool = False, epg_limit_prev: int = 1, epg_limit_next: int = 30) -> Optional[Dict[str, Any]]:
-        """Fetches channel list and optional EPG metadata."""
+    def get_channels(self, need_epg: bool = False, epg_limit_prev: int = 250, epg_limit_next: int = 50) -> Optional[Dict[str, Any]]:
+        """Fetches channel list and optional EPG metadata (defaults to 250 past programs = full 7-day catchup)."""
         self.refresh_token()
         payload = {
             "epg_limit_prev": epg_limit_prev if need_epg else 0,

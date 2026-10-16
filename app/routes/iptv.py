@@ -37,10 +37,13 @@ def clean_id(raw_id: str) -> int:
 
 @router.get("/playlist.m3u", response_class=Response)
 @router.get("/playlist.m3u8", response_class=Response)
+@router.get("/playlist_clean.m3u", response_class=Response)
 def get_playlist(
     request: Request,
     quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best' (highest bitrate), '1080p', '720p'"),
-    catchup: Optional[str] = Query(None, description="Catchup mode: 'vod', 'default', 'none', '0'")
+    catchup: Optional[str] = Query(None, description="Catchup mode: 'vod', 'default', 'none', '0'"),
+    no_epg: Optional[bool] = Query(False, description="Omit url-tvg header to avoid triggering automatic EPG import"),
+    legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs")
 ):
     """
     Returns M3U/M3U8 playlist with full channel lineup, category groups, logos,
@@ -52,11 +55,15 @@ def get_playlist(
             detail="Server is not logged in to Sweet.tv. Please authenticate first via Web UI."
         )
 
+    # If requested via /playlist_clean.m3u, automatically omit url-tvg header
+    is_clean = no_epg or request.url.path.endswith("playlist_clean.m3u")
     base_url = get_effective_base_url(request)
     playlist_text = generate_m3u_playlist(
         base_url,
         quality=quality or config.default_quality,
-        catchup=catchup
+        catchup=catchup,
+        no_epg=is_clean,
+        legacy_id=bool(legacy_id)
     )
 
     return Response(
@@ -73,13 +80,14 @@ def get_playlist(
 @router.get("/epg.xml", response_class=Response)
 def get_epg(
     country: Optional[str] = Query(None, description="Language code override (e.g. 'cs', 'sk', 'hu')"),
-    refresh: bool = Query(False, description="Force fresh download from Sweet.tv")
+    refresh: bool = Query(False, description="Force fresh download from Sweet.tv"),
+    legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs")
 ):
     """Returns XMLTV Electronic Program Guide formatted XML."""
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
-    xml_content = generate_xmltv_epg(country_code=country, force_refresh=refresh)
+    xml_content = generate_xmltv_epg(country_code=country, force_refresh=refresh, legacy_id=bool(legacy_id))
     return Response(
         content=xml_content,
         media_type="text/xml; charset=utf-8",

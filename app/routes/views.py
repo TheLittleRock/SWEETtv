@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import config
 from app.routes.iptv import get_effective_base_url
+from app.version import APP_NAME, APP_VERSION
 
 logger = logging.getLogger("SweetTV.Routes.Views")
 router = APIRouter(include_in_schema=False)
@@ -23,6 +24,8 @@ def index_view(request: Request):
         request=request,
         name="index.html",
         context={
+            "app_version": APP_VERSION,
+            "app_name": APP_NAME,
             "logged": config.is_logged,
             "country_code": config.country_code,
             "base_url": base_url,

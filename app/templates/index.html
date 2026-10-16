@@ -116,7 +116,7 @@
                         </div>
                         <button id="btn-close-catchup" class="text-slate-400 hover:text-white text-xs">Close &times;</button>
                     </div>
-                    <div id="catchup-programs-list" class="max-h-64 overflow-y-auto space-y-2 pr-1">
+                    <div id="catchup-programs-list" class="max-h-[30rem] overflow-y-auto space-y-2 pr-1">
                         <!-- Populated via JS -->
                     </div>
                 </div>
@@ -282,6 +282,62 @@
                 </div>
             </div>
 
+            <!-- Card 5: Clean Standalone M3U (No auto-epg header) -->
+            <div class="card p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="badge-emerald">Universal Clean</span>
+                        <span class="text-xs text-slate-400">No Auto-EPG Trigger</span>
+                    </div>
+                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; Clean Standalone</h3>
+                    <p class="text-xs text-slate-400 mb-4">Clean playlist without <code class="code-inline">url-tvg</code> header. Ideal for StreamCube if syncing channels independently of EPG.</p>
+                </div>
+                <div class="space-y-3">
+                    <div class="relative">
+                        <input id="url-m3u-clean" type="text" readonly value="{{ base_url }}/playlist_clean.m3u?quality=best" class="input-copy text-xs font-mono">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-clean">Copy URL</button>
+                        <a href="{{ base_url }}/playlist_clean.m3u?quality=best" download="sweettv_clean.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 6: XTream Codes API (Native JSON - Recommended for StreamCube & IPTV Smarters) -->
+            <div class="card p-6 flex flex-col justify-between border-cyan-500/40 bg-gradient-to-br from-slate-900 to-cyan-950/30 md:col-span-2">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-500 text-slate-950 shadow-sm">⭐ Recommended for StreamCube</span>
+                        <span class="text-xs text-cyan-400 font-mono">XTream Codes v2 API</span>
+                    </div>
+                    <h3 class="text-base font-bold text-white mb-1">XTream Codes Server &bull; Native JSON Connection</h3>
+                    <p class="text-xs text-slate-300 mb-4">In StreamCube, click <strong>"XTream Server"</strong> in the left sidebar and enter the 3 fields below. Native JSON eliminates all M3U regex/parsing bugs, loads channels instantly, and synchronizes full 7-day EPG.</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <span class="text-[11px] text-slate-400 block mb-1">Server URL / Host:</span>
+                        <div class="flex items-center justify-between">
+                            <span class="font-mono text-cyan-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}</span>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}">Copy</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <span class="text-[11px] text-slate-400 block mb-1">Username:</span>
+                        <div class="flex items-center justify-between">
+                            <span class="font-mono text-cyan-300 text-xs font-semibold select-all">sweettv</span>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="sweettv">Copy</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                        <span class="text-[11px] text-slate-400 block mb-1">Password:</span>
+                        <div class="flex items-center justify-between">
+                            <span class="font-mono text-cyan-300 text-xs font-semibold select-all">sweettv</span>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="sweettv">Copy</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -295,7 +351,7 @@
         </div>
 
         <!-- Metric Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div class="card p-5">
                 <span class="text-xs text-slate-400 font-medium">Sweet.tv Account</span>
                 <div id="status-card-account" class="text-lg font-bold text-white mt-1 flex items-center gap-2">
@@ -321,7 +377,15 @@
             </div>
 
             <div class="card p-5">
-                <span class="text-xs text-slate-400 font-medium">Stream Delivery Mode</span>
+                <span class="text-xs text-slate-400 font-medium">Server Version</span>
+                <div id="status-card-version" class="text-lg font-bold text-cyan-400 font-mono mt-1">
+                    v{{ app_version }}
+                </div>
+                <a href="/api/version" target="_blank" class="text-xs text-slate-400 hover:text-cyan-300 mt-2 block underline">Check /api/version</a>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium">Delivery Mode</span>
                 <div id="status-card-mode" class="text-lg font-bold text-emerald-400 mt-1">
                     CDN Direct (302)
                 </div>
