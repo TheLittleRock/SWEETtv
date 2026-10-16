@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-md mx-auto my-12 bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl text-center">
+    <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 mx-auto flex items-center justify-center mb-6 shadow-lg shadow-cyan-500/10">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white mb-2">Connect Sweet.tv Account</h2>
+    <p class="text-xs text-slate-400 mb-6">Authorize this server to stream channels and generate M3U / EPG playlists.</p>
+
+    <div id="page-auth-loading" class="py-12">
+        <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-cyan-500 border-t-transparent"></div>
+        <p class="text-xs text-slate-400 mt-3">Requesting activation code...</p>
+    </div>
+
+    <div id="page-auth-content" class="hidden space-y-5">
+        <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Device Activation Code</span>
+            <div id="page-code-display" class="text-5xl font-extrabold text-amber-400 font-mono tracking-widest my-3 select-all">
+                ----
+            </div>
+            <a id="page-activate-link" href="#" target="_blank" class="inline-flex items-center text-xs text-cyan-400 hover:text-cyan-300 font-semibold">
+                Open sweet.tv/addDevice
+                <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+        </div>
+
+        <div class="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col items-center">
+            <span class="text-xs text-slate-400 mb-3 font-medium">Or scan QR code with mobile camera</span>
+            <img id="page-qr-image" src="" alt="QR Code" class="w-48 h-48 rounded-xl bg-white p-2.5 border border-slate-700 shadow-md">
+        </div>
+
+        <div class="flex items-center justify-center gap-2 text-xs text-slate-400 pt-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-ping"></span>
+            Waiting for device authorization...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        // Automatically start auth on dedicated login page
+        fetch("/api/auth/start", { method: "POST" })
+            .then(r => r.json())
+            .then(data => {
+                if (data.result === "OK") {
+                    document.getElementById("page-auth-loading").classList.add("hidden");
+                    document.getElementById("page-auth-content").classList.remove("hidden");
+                    document.getElementById("page-code-display").textContent = data.auth_code;
+                    document.getElementById("page-activate-link").href = data.activate_url;
+                    document.getElementById("page-qr-image").src = data.qr_url;
+
+                    const timer = setInterval(() => {
+                        fetch(`/api/auth/status?code=${data.auth_code}`)
+                            .then(r => r.json())
+                            .then(res => {
+                                if (res.status === "COMPLETED") {
+                                    clearInterval(timer);
+                                    window.location.href = "/?connected=1";
+                                }
+                            });
+                    }, 2500);
+                }
+            })
+            .catch(err => {
+                document.getElementById("page-auth-loading").innerHTML = '<p class="text-xs text-red-400">Failed to load login code. Please check server internet connection.</p>';
+            });
+    });
+</script>
+{% endblock %}

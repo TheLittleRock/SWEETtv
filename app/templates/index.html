@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ========================================================================= -->
+    <!-- TAB 1: LIVE TV WEB PLAYER -->
+    <!-- ========================================================================= -->
+    <div id="tab-player" class="tab-content">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Video Player Column (8 cols on lg) -->
+            <div class="lg:col-span-8 flex flex-col gap-4">
+                <!-- Video Container -->
+                <div class="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl group flex items-center justify-center">
+                    <video id="tv-player" class="w-full h-full object-contain" controls autoplay playsinline></video>
+
+                    <!-- Overlay when no stream loaded or error -->
+                    <div id="player-placeholder" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center text-center p-6 transition-opacity">
+                        <div class="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 mb-4 shadow-xl">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <h4 class="text-lg font-bold text-white mb-1">Select a Channel to Watch</h4>
+                        <p class="text-xs text-slate-400 max-w-sm">Browse the channel list on the right and click any channel to start high-definition streaming.</p>
+                    </div>
+
+                    <!-- Loading Indicator -->
+                    <div id="player-loading" class="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center hidden pointer-events-none">
+                        <div class="flex flex-col items-center gap-2">
+                            <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-cyan-500 border-t-transparent"></div>
+                            <span class="text-xs text-white/90 font-medium">Buffering highest quality stream...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stream Controls & Quality Selector Toolbar -->
+                <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stream Quality &amp; Codec</span>
+                            <div class="flex items-center gap-2 mt-1">
+                                <select id="player-quality-select" class="bg-slate-950 border border-slate-700 text-xs text-cyan-400 font-medium rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                    <option value="auto">Auto (Adaptive Multi-Bitrate)</option>
+                                    <option value="best">Highest Available Bitrate (Force 4K/FHD)</option>
+                                    <option value="1080p">1080p (Full HD)</option>
+                                    <option value="720p">720p (HD)</option>
+                                    <option value="360p">360p (Data Saver)</option>
+                                </select>
+                                <span id="player-codec-badge" class="text-[11px] font-mono px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700/80">
+                                    AVC / AAC
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button id="btn-reload-stream" class="btn-secondary text-xs px-3 py-1.5" title="Reload current stream">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Reload
+                        </button>
+                        <button id="btn-fullscreen-player" class="btn-secondary text-xs px-3 py-1.5" title="Toggle Fullscreen">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                            Fullscreen
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Now Playing / EPG Info Card -->
+                <div id="channel-now-playing-card" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+                    <div class="flex items-start gap-4">
+                        <img id="active-channel-logo" src="" alt="Channel Logo" class="w-16 h-16 rounded-xl bg-slate-950 p-2 object-contain border border-slate-800 hidden">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap mb-1">
+                                <h3 id="active-channel-name" class="text-lg font-bold text-white truncate">No Channel Selected</h3>
+                                <span id="active-channel-category" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-cyan-400 border border-slate-700 hidden"></span>
+                                <span id="active-channel-catchup" class="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 hidden">Catchup Available</span>
+                            </div>
+
+                            <!-- Programme Info -->
+                            <div id="active-channel-epg-box" class="mt-2 space-y-2">
+                                <div>
+                                    <div class="flex items-center justify-between text-xs mb-1">
+                                        <span id="active-prog-title" class="font-semibold text-slate-200">Broadcast</span>
+                                        <span id="active-prog-times" class="text-slate-400 font-mono">--:-- - --:--</span>
+                                    </div>
+                                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                                        <div id="active-prog-progress" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-1.5 rounded-full" style="width: 0%"></div>
+                                    </div>
+                                </div>
+
+                                <div id="active-next-prog-box" class="pt-2 border-t border-slate-800/60 flex items-center gap-2 text-xs text-slate-400 hidden">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Next</span>
+                                    <span id="active-next-prog-title" class="truncate text-slate-300"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Channels Sidebar (4 cols on lg) -->
+            <div class="lg:col-span-4 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl h-[750px] overflow-hidden shadow-xl">
+                <!-- Search & Filters Header -->
+                <div class="p-4 border-b border-slate-800 bg-slate-900/80 space-y-3">
+                    <div class="relative">
+                        <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        <input id="channel-search-input" type="text" placeholder="Search channels..." class="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                    </div>
+
+                    <!-- Category Pills Horizontal Scroll -->
+                    <div id="category-pills-container" class="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                        <button class="cat-pill active" data-cat="all">All</button>
+                    </div>
+                </div>
+
+                <!-- Channel Cards Scrollable List -->
+                <div id="channels-list" class="flex-1 overflow-y-auto p-3 space-y-2 divide-y divide-slate-800/40">
+                    <!-- Populated dynamically via JS -->
+                    <div class="text-center py-12 text-slate-500 text-xs">
+                        Loading channels...
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 2: PLAYLISTS & EPG HUB -->
+    <!-- ========================================================================= -->
+    <div id="tab-links" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4">
+            <h2 class="text-xl font-bold text-white">IPTV Endpoints &amp; Integration Hub</h2>
+            <p class="text-xs text-slate-400 mt-1">Direct links for Kodi PVR IPTV Simple Client, TiviMate, OTT Navigator, VLC, Apple TV, and IPTV players.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <!-- Card 1: Adaptive M3U Playlist -->
+            <div class="card p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="badge-cyan">Recommended</span>
+                        <span class="text-xs text-slate-400">HLS Multi-Bitrate</span>
+                    </div>
+                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; Adaptive Quality</h3>
+                    <p class="text-xs text-slate-400 mb-4">Master playlist containing all available bitrates (4K UHD, 1080p, 720p). Your IPTV client automatically adapts or lets you pick quality.</p>
+                </div>
+                <div class="space-y-3">
+                    <div class="relative">
+                        <input id="url-m3u-adaptive" type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-adaptive">Copy URL</button>
+                        <a href="{{ base_url }}/playlist.m3u" download="sweettv.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: Highest Quality M3U Playlist -->
+            <div class="card p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="badge-emerald">Ultra Quality</span>
+                        <span class="text-xs text-slate-400">Max Bitrate Forced</span>
+                    </div>
+                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; Highest Bitrate (4K / 1080p)</h3>
+                    <p class="text-xs text-slate-400 mb-4">Forces the highest available bitrate and maximum resolution (up to 3840x2160 @ 17Mbps) directly on every channel stream.</p>
+                </div>
+                <div class="space-y-3">
+                    <div class="relative">
+                        <input id="url-m3u-best" type="text" readonly value="{{ base_url }}/playlist.m3u?quality=best" class="input-copy text-xs font-mono">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-best">Copy URL</button>
+                        <a href="{{ base_url }}/playlist.m3u?quality=best" download="sweettv_best.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: XMLTV EPG (Standard & Gzip) -->
+            <div class="card p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="badge-blue">Electronic Guide</span>
+                        <span class="text-xs text-slate-400">XMLTV Format</span>
+                    </div>
+                    <h3 class="text-base font-bold text-white mb-1">EPG Guide (XMLTV)</h3>
+                    <p class="text-xs text-slate-400 mb-4">Complete TV schedule with program names, times, catchup IDs, descriptions, and channel icons.</p>
+                </div>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-[11px] text-slate-400 block mb-1">Standard XML URL:</label>
+                        <input id="url-epg-xml" type="text" readonly value="{{ base_url }}/epg.xml" class="input-copy text-xs font-mono mb-2">
+                        <div class="flex gap-2">
+                            <button class="btn-primary flex-1 text-xs py-1.5 btn-copy" data-target="url-epg-xml">Copy EPG URL</button>
+                            <a href="{{ base_url }}/epg.xml" target="_blank" class="btn-secondary text-xs py-1.5 px-3">View</a>
+                        </div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-800">
+                        <label class="text-[11px] text-slate-400 block mb-1">Compressed Gzip URL (Faster loading):</label>
+                        <input id="url-epg-gz" type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono mb-2">
+                        <button class="btn-secondary w-full text-xs py-1.5 btn-copy" data-target="url-epg-gz">Copy Gzip URL</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 4: Catchup Replay Integration -->
+            <div class="card p-6 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="badge-purple">Archive &bull; Replay</span>
+                        <span class="text-xs text-slate-400">Catchup VOD</span>
+                    </div>
+                    <h3 class="text-base font-bold text-white mb-1">Catchup &bull; 7-Day Replay</h3>
+                    <p class="text-xs text-slate-400 mb-4">Sweet.tv supports up to 7 days of archive replay for supported channels. This syntax is automatically injected into the generated M3U playlist:</p>
+                </div>
+                <div class="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-300">
+                    <div>catchup="vod"</div>
+                    <div class="text-cyan-400 truncate">catchup-source="{{ base_url }}/play/{id}/{catchup-id}"</div>
+                    <div>catchup-days="7"</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 3: STATUS & METRICS -->
+    <!-- ========================================================================= -->
+    <div id="tab-status" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4">
+            <h2 class="text-xl font-bold text-white">System Status &amp; Diagnostics</h2>
+            <p class="text-xs text-slate-400 mt-1">Real-time authentication lifecycle, API token countdown, and provider parameters.</p>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium">Sweet.tv Account</span>
+                <div id="status-card-account" class="text-lg font-bold text-white mt-1 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> Checking...
+                </div>
+                <span id="status-card-country" class="text-xs text-cyan-400 mt-2 block">Region: {{ country_code|upper }}</span>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium">Token Lifetime Remaining</span>
+                <div id="status-card-token-timer" class="text-lg font-bold text-amber-400 font-mono mt-1">
+                    --:--:--
+                </div>
+                <span class="text-xs text-slate-400 mt-2 block">Auto-renews at 85% elapsed</span>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium">Total Live Channels</span>
+                <div id="status-card-channels" class="text-lg font-bold text-white mt-1">
+                    --
+                </div>
+                <span class="text-xs text-slate-400 mt-2 block">Includes HD, Ultra HD &amp; Free</span>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium">Stream Delivery Mode</span>
+                <div id="status-card-mode" class="text-lg font-bold text-emerald-400 mt-1">
+                    CDN Direct (302)
+                </div>
+                <span class="text-xs text-slate-400 mt-2 block">Zero server CPU &amp; bandwidth</span>
+            </div>
+        </div>
+
+        <!-- Device & Identity Details -->
+        <div class="card p-6">
+            <h3 class="text-sm font-bold text-white mb-4">Emulated Device Parameters</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 block mb-1">Virtual MAC Address:</span>
+                    <span class="text-cyan-400 select-all">{{ mac }}</span>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 block mb-1">Device UUID:</span>
+                    <span class="text-cyan-400 select-all">{{ uuid }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: SETTINGS -->
+    <!-- ========================================================================= -->
+    <div id="tab-settings" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4">
+            <h2 class="text-xl font-bold text-white">Server &amp; Stream Configuration</h2>
+            <p class="text-xs text-slate-400 mt-1">Customize language/region, external domain for Nginx Proxy Manager, and quality defaults.</p>
+        </div>
+
+        <div class="card p-6 max-w-2xl space-y-6">
+            <form id="settings-form" class="space-y-4">
+                <!-- Country Code -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Country / Region Code</label>
+                    <select id="setting-country-code" class="input-form">
+                        <option value="cs" {% if country_code == 'cs' %}selected{% endif %}>Czech Republic (cs)</option>
+                        <option value="sk" {% if country_code == 'sk' %}selected{% endif %}>Slovakia (sk)</option>
+                        <option value="hu" {% if country_code == 'hu' %}selected{% endif %}>Hungary (hu)</option>
+                        <option value="pl" {% if country_code == 'pl' %}selected{% endif %}>Poland (pl)</option>
+                        <option value="ro" {% if country_code == 'ro' %}selected{% endif %}>Romania (ro)</option>
+                        <option value="uk" {% if country_code == 'uk' %}selected{% endif %}>Ukraine (uk)</option>
+                    </select>
+                    <p class="text-[11px] text-slate-400 mt-1">Changes the EPG language and region-specific channel packages.</p>
+                </div>
+
+                <!-- External URL (For NPM / Reverse Proxy) -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">External Domain / Public URL</label>
+                    <input id="setting-external-url" type="text" placeholder="https://tv.yourdomain.com" value="{{ external_url }}" class="input-form font-mono text-xs">
+                    <p class="text-[11px] text-slate-400 mt-1">Set this when running behind Nginx Proxy Manager (NPM) or public domain so M3U and EPG links use your public HTTPS domain.</p>
+                </div>
+
+                <!-- Default Playlist Quality -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Default Playlist Stream Quality</label>
+                    <select id="setting-default-quality" class="input-form">
+                        <option value="auto" {% if default_quality == 'auto' %}selected{% endif %}>Auto (Adaptive Multi-Bitrate Master Playlist)</option>
+                        <option value="best" {% if default_quality == 'best' %}selected{% endif %}>Highest Bitrate (Force 4K UHD / 1080p FHD)</option>
+                        <option value="1080p" {% if default_quality == '1080p' %}selected{% endif %}>1080p (Full HD)</option>
+                        <option value="720p" {% if default_quality == '720p' %}selected{% endif %}>720p (HD)</option>
+                    </select>
+                </div>
+
+                <!-- Stream Delivery Mode -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Stream Delivery Technique</label>
+                    <select id="setting-direct-redirect" class="input-form">
+                        <option value="true" {% if direct_redirect %}selected{% endif %}>Direct CDN 302 Redirect (Recommended: Best performance, 0 CPU, 0 bandwidth)</option>
+                        <option value="false" {% if not direct_redirect %}selected{% endif %}>Server Proxy Mode (Stream proxied through this server)</option>
+                    </select>
+                </div>
+
+                <div class="pt-4 border-t border-slate-800 flex items-center justify-between">
+                    <button type="submit" class="btn-primary text-xs py-2 px-5">Save Configuration</button>
+                    <button type="button" id="btn-force-refresh-cache" class="btn-secondary text-xs py-2 px-4">Refresh Cache</button>
+                </div>
+            </form>
+
+            <!-- Disconnect Account -->
+            <div class="pt-6 border-t border-slate-800 flex items-center justify-between">
+                <div>
+                    <h4 class="text-xs font-bold text-white">Sweet.tv Account Session</h4>
+                    <p class="text-[11px] text-slate-400">Disconnect your account and clear saved authentication tokens.</p>
+                </div>
+                <button id="btn-logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                    Disconnect
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 5: SETUP GUIDES & NPM DOCUMENTATION -->
+    <!-- ========================================================================= -->
+    <div id="tab-guides" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4">
+            <h2 class="text-xl font-bold text-white">Setup Guides &amp; Deployment Documentation</h2>
+            <p class="text-xs text-slate-400 mt-1">Instructions for Nginx Proxy Manager (NPM), Kodi, TiviMate, VLC, and Portainer.</p>
+        </div>
+
+        <div class="space-y-6 max-w-4xl">
+
+            <!-- Guide 1: Nginx Proxy Manager (NPM) -->
+            <div class="card p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">
+                        NPM
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Exposing via Nginx Proxy Manager (NPM) &amp; Public IP</h3>
+                        <p class="text-xs text-slate-400">Access your M3U and EPG securely from anywhere on the internet.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4 text-xs text-slate-300">
+                    <p>
+                        With a Public IP and Nginx Proxy Manager (NPM), you can assign a domain (e.g., <code class="code-inline">tv.yourdomain.com</code>) with a free SSL certificate from Let's Encrypt.
+                    </p>
+
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <span class="text-xs font-bold text-white block">Step 1: Port Forwarding</span>
+                        <p class="text-slate-400">On your home router, forward external ports <code class="code-inline">80</code> and <code class="code-inline">443</code> to the local IP of your Nginx Proxy Manager host.</p>
+                    </div>
+
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <span class="text-xs font-bold text-white block">Step 2: Add Proxy Host in NPM</span>
+                        <ul class="list-disc list-inside space-y-1 text-slate-300">
+                            <li><strong>Domain Names:</strong> <code class="code-inline">tv.yourdomain.com</code></li>
+                            <li><strong>Scheme:</strong> <code class="code-inline">http</code></li>
+                            <li><strong>Forward Hostname / IP:</strong> Local IP of this server or container name (e.g. <code class="code-inline">sweettv-proxy</code> or <code class="code-inline">192.168.1.xxx</code>)</li>
+                            <li><strong>Forward Port:</strong> <code class="code-inline">5000</code></li>
+                            <li><strong>Enable:</strong> <span class="text-cyan-400 font-semibold">Websockets Support</span> &bull; <span class="text-cyan-400 font-semibold">Block Common Exploits</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <span class="text-xs font-bold text-white block">Step 3: SSL Certificate</span>
+                        <ul class="list-disc list-inside space-y-1 text-slate-300">
+                            <li>Switch to the <strong>SSL</strong> tab in NPM.</li>
+                            <li>Select <strong>Request a new SSL Certificate</strong> (Let's Encrypt).</li>
+                            <li>Check <strong>Force SSL</strong> and <strong>HTTP/2 Support</strong>.</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                        <span class="text-xs font-bold text-white block">Step 4: Update External Domain in Settings</span>
+                        <p class="text-slate-400">Open the <a href="#" class="text-cyan-400 underline" onclick="switchTab('settings')">Settings Tab</a> above and set <strong>External Domain</strong> to <code class="code-inline">https://tv.yourdomain.com</code>. This ensures all generated M3U channel URLs and catchup links use your HTTPS domain!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guide 2: Kodi Setup -->
+            <div class="card p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
+                        Kodi
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Kodi (PVR IPTV Simple Client)</h3>
+                        <p class="text-xs text-slate-400">Full TV guide, logos, categories, and catchup replay in Kodi.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs text-slate-300">
+                    <ol class="list-decimal list-inside space-y-2">
+                        <li>Install <strong>PVR IPTV Simple Client</strong> in Kodi (Settings &rarr; Add-ons &rarr; Install from repository &rarr; PVR clients &rarr; PVR IPTV Simple Client).</li>
+                        <li>Open the add-on configuration &rarr; <strong>General</strong> tab:
+                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800">
+                                M3U Playlist URL: {{ base_url }}/playlist.m3u
+                            </div>
+                        </li>
+                        <li>Switch to the <strong>EPG</strong> tab:
+                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800">
+                                XMLTV URL: {{ base_url }}/epg.xml.gz
+                            </div>
+                        </li>
+                        <li>Switch to the <strong>Catchup</strong> tab:
+                            <ul class="list-disc list-inside ml-5 mt-1 text-slate-400 space-y-0.5">
+                                <li>Enable Catchup: <strong class="text-white">Yes</strong></li>
+                                <li>Catchup mode: <strong class="text-white">Default</strong> (or Append to URL)</li>
+                                <li>Query format: <code class="code-inline">{catchup-id}</code></li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Guide 3: TiviMate / OTT Navigator -->
+            <div class="card p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
+                        TV
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">TiviMate &amp; Android TV Players</h3>
+                        <p class="text-xs text-slate-400">Best-in-class IPTV experience on Google TV, FireTV, and Shield.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs text-slate-300">
+                    <ol class="list-decimal list-inside space-y-2">
+                        <li>In TiviMate, go to <strong>Settings &rarr; Playlists &rarr; Add Playlist</strong>.</li>
+                        <li>Select <strong>M3U Playlist</strong> and enter the URL: <code class="code-inline">{{ base_url }}/playlist.m3u</code>.</li>
+                        <li>In the EPG section, enter the guide URL: <code class="code-inline">{{ base_url }}/epg.xml</code>.</li>
+                        <li>In Playlist options, ensure <strong>Catchup</strong> is set to <strong>Auto</strong> or <strong>Type: Xtream Codes / Flussonic / VOD</strong>.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Guide 4: Portainer / Docker Deployment -->
+            <div class="card p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                        Docker
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white">Docker Compose &amp; Portainer Stack</h3>
+                        <p class="text-xs text-slate-400">One-click stack deployment with persistent data volume.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs text-slate-300">
+                    <p>In Portainer, click <strong>Stacks &rarr; Add stack &rarr; Web editor</strong> and paste:</p>
+                    <pre class="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-[11px] text-cyan-300 overflow-x-auto">version: '3.8'
+
+services:
+  sweettv-proxy:
+    image: sweettv-proxy:latest
+    build: .
+    container_name: sweettv-proxy
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+      - EXTERNAL_URL=https://tv.yourdomain.com  # Optional: your NPM public domain
+      - SWEETTV_COUNTRY_CODE=cs                # cs, sk, hu, pl, uk, ro
+      - DEFAULT_QUALITY=auto                   # auto, best, 1080p, 720p
+      - DIRECT_REDIRECT=true
+    volumes:
+      - sweettv_data:/app/data
+
+volumes:
+  sweettv_data:
+    name: sweettv_data</pre>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

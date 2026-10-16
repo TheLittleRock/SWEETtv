@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+data/config.json
+data/*.cache
+data/*.log
+plugin.video.sweettv-main
+.idea
+.vscode

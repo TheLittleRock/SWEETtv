@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  sweettv:
+    image: sweettv-proxy:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sweettv-proxy
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+      - SWEETTV_COUNTRY_CODE=cs            # Czech (cs), Slovak (sk), Hungarian (hu), Polish (pl), etc.
+      - EXTERNAL_URL=                      # Optional: Public domain e.g. https://tv.yourdomain.com
+      - DEFAULT_QUALITY=auto               # 'auto' (multi-bitrate), 'best' (force 4K/FHD), '1080p', '720p'
+      - DIRECT_REDIRECT=true               # Direct 302 to Sweet.tv CDN (fastest, zero CPU)
+      - TZ=Europe/Prague
+    volumes:
+      - sweettv_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  sweettv_data:
+    name: sweettv_data
