@@ -59,11 +59,15 @@ def invalidate_cache():
     logger.info("Channel and EPG caches invalidated.")
 
 
-def generate_m3u_playlist(base_url: str, quality: Optional[str] = None) -> str:
+def generate_m3u_playlist(
+    base_url: str,
+    quality: Optional[str] = None,
+    catchup: Optional[str] = None
+) -> str:
     """
-    Generates standard M3U/M3U8 playlist with full IPTV metadata,
-    category groupings, channel logos, and catchup replay tags.
-    Compatible with IPTVnator, Kodi PVR IPTV Simple Client, TiviMate, OTT Navigator, VLC.
+    Generates clean, standard M3U/M3U8 playlist with full IPTV metadata,
+    category groupings, channel logos, and optional catchup replay tags.
+    Universally compatible with IPTV portals, StreamTrack, Threadfin, Kodi, TiviMate, VLC.
     """
     data = get_cached_channels(need_epg=False)
     if not data or data.get("status") != "OK":
@@ -72,6 +76,12 @@ def generate_m3u_playlist(base_url: str, quality: Optional[str] = None) -> str:
     categories: Dict[int, str] = {cat.get("id"): cat.get("caption", "") for cat in data.get("categories", [])}
 
     q_param = f"?quality={quality}" if quality and quality != "auto" else ""
+
+    # Determine whether catchup tags should be included in the playlist
+    if catchup is not None:
+        include_catchup = catchup.lower() in ("vod", "default", "1", "true", "kodi", "append")
+    else:
+        include_catchup = bool(config.get("m3u_catchup", False))
 
     lines = [f'#EXTM3U url-tvg="{base_url}/epg.xml"']
 
@@ -83,23 +93,25 @@ def generate_m3u_playlist(base_url: str, quality: Optional[str] = None) -> str:
         cname = (ch.get("name") or f"Channel {cid}").strip()
         icon = ch.get("icon_v2_url") or ch.get("icon_url") or ""
 
-        # Build category group string
+        # Primary category (clean, standard group-title)
         cat_names = [categories[c] for c in ch.get("category", []) if c in categories and c != 1000]
-        group_title = ";".join(cat_names) if cat_names else "General"
+        group_title = cat_names[0] if cat_names else "General"
 
-        # Clean standard stream URL ending with .m3u8 for full player compatibility
+        # Standard stream URL
         stream_link = f"{base_url}/stream/{cid}.m3u8{q_param}"
 
         catchup_tag = ""
-        if ch.get("catchup"):
+        if include_catchup and ch.get("catchup"):
             catchup_days = max(1, int(ch.get("catchup_duration", 7) or 7))
             catchup_source = f"{base_url}/stream/{cid}/{{catchup-id}}.m3u8{q_param}"
             catchup_tag = f'catchup="vod" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
 
-        extinf = f'#EXTINF:-1 tvg-id="{cid}.id.com" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" {catchup_tag},{cname}'.strip()
+        if catchup_tag:
+            extinf = f'#EXTINF:-1 tvg-id="{cid}.id.com" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" {catchup_tag},{cname}'
+        else:
+            extinf = f'#EXTINF:-1 tvg-id="{cid}.id.com" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}",{cname}'
 
         lines.append(extinf)
-        lines.append(f"#EXTVLCOPT:http-user-agent={client.DEFAULT_UA}")
         lines.append(stream_link)
 
     return "\n".join(lines) + "\n"

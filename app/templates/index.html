@@ -266,15 +266,19 @@
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="badge-purple">Archive &bull; Replay</span>
-                        <span class="text-xs text-slate-400">Catchup VOD</span>
+                        <span class="text-xs text-slate-400">Kodi &amp; TiviMate</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1">Catchup &bull; 7-Day Replay</h3>
-                    <p class="text-xs text-slate-400 mb-4">Sweet.tv supports up to 7 days of archive replay for supported channels. This syntax is automatically injected into the generated M3U playlist:</p>
+                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; With Catchup Tags</h3>
+                    <p class="text-xs text-slate-400 mb-4">Includes embedded <code class="code-inline">catchup="vod"</code> tags for Kodi PVR IPTV Simple Client and TiviMate to enable 7-day past broadcast replay.</p>
                 </div>
-                <div class="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-300">
-                    <div>catchup="vod"</div>
-                    <div class="text-cyan-400 truncate">catchup-source="{{ base_url }}/stream/{id}/{catchup-id}.m3u8"</div>
-                    <div>catchup-days="7"</div>
+                <div class="space-y-3">
+                    <div class="relative">
+                        <input id="url-m3u-catchup" type="text" readonly value="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" class="input-copy text-xs font-mono">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-catchup">Copy URL</button>
+                        <a href="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" download="sweettv_catchup.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                    </div>
                 </div>
             </div>
 
@@ -391,6 +395,17 @@
                         <option value="true" {% if direct_redirect %}selected{% endif %}>Direct CDN 302 Redirect (Recommended: Best performance, 0 CPU, 0 bandwidth)</option>
                         <option value="false" {% if not direct_redirect %}selected{% endif %}>Server Proxy Mode (Stream proxied through this server)</option>
                     </select>
+                </div>
+
+                <!-- M3U Catchup Tags in Default Playlist -->
+                <div class="pt-2">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input id="setting-m3u-catchup" type="checkbox" {% if m3u_catchup %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0">
+                        <div>
+                            <span class="text-xs font-semibold text-slate-200">Include Catchup Tags in Default M3U Playlist</span>
+                            <p class="text-[11px] text-slate-400 mt-0.5">When checked, <code class="code-inline">catchup="vod"</code> is added to default M3U links. Leave unchecked for universal compatibility with IPTV web portals and StreamTrack (you can always use <code class="code-inline">&amp;catchup=vod</code> for Kodi/TiviMate).</p>
+                        </div>
+                    </label>
                 </div>
 
                 <div class="pt-4 border-t border-slate-800 flex items-center justify-between">

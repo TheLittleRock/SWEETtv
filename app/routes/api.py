@@ -20,6 +20,7 @@ class SettingsUpdate(BaseModel):
     external_url: Optional[str] = None
     default_quality: Optional[str] = None
     direct_redirect: Optional[bool] = None
+    m3u_catchup: Optional[bool] = None
 
 
 @router.get("/status")
@@ -234,6 +235,9 @@ def update_settings(payload: SettingsUpdate) -> Dict[str, Any]:
 
     if payload.direct_redirect is not None:
         changed["direct_redirect"] = payload.direct_redirect
+
+    if payload.m3u_catchup is not None:
+        changed["m3u_catchup"] = payload.m3u_catchup
 
     if changed:
         config.update(changed)

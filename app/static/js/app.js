@@ -248,11 +248,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (settingsForm) {
         settingsForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+            const catchupInput = document.getElementById("setting-m3u-catchup");
             const payload = {
                 countryCode: document.getElementById("setting-country-code").value,
                 external_url: document.getElementById("setting-external-url").value,
                 default_quality: document.getElementById("setting-default-quality").value,
                 direct_redirect: document.getElementById("setting-direct-redirect").value === "true",
+                m3u_catchup: catchupInput ? catchupInput.checked : false,
             };
 
             try {

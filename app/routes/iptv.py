@@ -39,11 +39,12 @@ def clean_id(raw_id: str) -> int:
 @router.get("/playlist.m3u8", response_class=Response)
 def get_playlist(
     request: Request,
-    quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best' (highest bitrate), '1080p', '720p'")
+    quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best' (highest bitrate), '1080p', '720p'"),
+    catchup: Optional[str] = Query(None, description="Catchup mode: 'vod', 'default', 'none', '0'")
 ):
     """
     Returns M3U/M3U8 playlist with full channel lineup, category groups, logos,
-    and catchup replay support for IPTVnator, Kodi, VLC, and TiviMate.
+    and optional catchup replay support.
     """
     if not config.is_logged:
         raise HTTPException(
@@ -52,7 +53,11 @@ def get_playlist(
         )
 
     base_url = get_effective_base_url(request)
-    playlist_text = generate_m3u_playlist(base_url, quality=quality or config.default_quality)
+    playlist_text = generate_m3u_playlist(
+        base_url,
+        quality=quality or config.default_quality,
+        catchup=catchup
+    )
 
     return Response(
         content=playlist_text,
