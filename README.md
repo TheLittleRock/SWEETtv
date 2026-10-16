@@ -250,23 +250,29 @@ Open your Sweet.tv web dashboard (`https://tv.yourdomain.com` or local IP):
 
 ## 📺 Client Configuration
 
-### 1. StreamCube (Web, Desktop & Android)
+### 1. Stalker / MAG Portals (Recommended for Portal Apps & Set-Top Boxes)
 
-StreamCube supports both **XTream Codes** and standard **M3U lists**:
+The server provides full native **Ministra / Stalker Middleware** emulation:
+1. Open your IPTV application or MAG Set-Top Box and navigate to **Stalker Portály (Stalker Portals)**.
+2. Click **Přidat Stalker portál (Add Portal)**.
+3. Enter the following parameters:
+   - **Portal Name**: `SweetTV`
+   - **Portal URL**: `https://tv.yourdomain.com/c/` (or `http://<server-ip>:5000/c/`)
+   - **MAC Address**: Use your device's MAC address (or any valid MAC address; all MACs are accepted automatically).
+4. Click **Connect / Save**. The application connects over native JSON-RPC, loading channels, logos, categories, and 7-day EPG directly without any M3U text parsing issues.
 
-#### Recommended Method: XTream Server (Native JSON — 100% Error-Free)
-1. Open StreamCube and click **XTream Server** in the left sidebar.
+### 2. XTream Codes API (IPTV Smarters, TiviMate, OTT Navigator)
+1. In your IPTV player, add an **Xtream Codes** account.
 2. Enter the following parameters:
    - **Server / Host URL**: `https://tv.yourdomain.com` (or `http://<server-ip>:5000`)
-   - **Uživatelské jméno (Username)**: `sweettv` (or any string)
-   - **Heslo (Password)**: `sweettv` (or any string)
-3. Click **Připojit (Connect)**. StreamCube will immediately load all channels, logos, categories, and 7-day EPG using native JSON without any M3U parsing or database syntax issues.
+   - **Username**: `sweettv` (or your configured username in Settings)
+   - **Password**: `sweet` (or your configured password in Settings)
+3. Click **Connect**. Channels, categories, and EPG are loaded instantly via native JSON.
 
-#### Alternative Method: M3U Seznamy
-If you prefer adding via M3U:
-- **M3U URL**: `https://tv.yourdomain.com/playlist_clean.m3u?quality=best`
-- **EPG URL**: `https://tv.yourdomain.com/epg.xml`
-- *(Using `playlist_clean.m3u` prevents duplicate automatic EPG parsing triggers)*.
+### 3. M3U Playlists
+- **Full M3U Playlist (with EPG & Catchup)**: `https://tv.yourdomain.com/playlist.m3u`
+- **Clean Standalone M3U (independent channel sync)**: `https://tv.yourdomain.com/playlist_clean.m3u?quality=best`
+- **XMLTV EPG**: `https://tv.yourdomain.com/epg.xml` (or `epg.xml.gz` compressed)
 
 ---
 

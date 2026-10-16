@@ -32,7 +32,9 @@ def index_view(request: Request):
             "external_url": config.external_url,
             "default_quality": config.default_quality,
             "direct_redirect": config.direct_redirect,
-            "m3u_catchup": config.get("m3u_catchup", False),
+            "m3u_catchup": config.get("m3u_catchup", True),
+            "xtream_user": config.xtream_user,
+            "xtream_password": config.xtream_password,
             "mac": config.get("mac"),
             "uuid": config.get("uuid"),
         }

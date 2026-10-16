@@ -9,6 +9,7 @@ from app.config import config
 from app.epg import get_cached_channels
 from app.routes.api import router as api_router
 from app.routes.iptv import router as iptv_router
+from app.routes.stalker import router as stalker_router
 from app.routes.views import router as views_router
 from app.routes.xtream import router as xtream_router
 from app.version import APP_NAME, APP_VERSION
@@ -82,6 +83,7 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 app.include_router(views_router)
 app.include_router(iptv_router)
 app.include_router(xtream_router)
+app.include_router(stalker_router)
 app.include_router(api_router)
 
 

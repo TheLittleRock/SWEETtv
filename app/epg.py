@@ -77,7 +77,7 @@ def generate_m3u_playlist(
     """
     Generates clean, standard M3U/M3U8 playlist with full IPTV metadata,
     category groupings, channel logos, and optional catchup replay tags.
-    Universally compatible with IPTV portals, StreamCube, StreamTrack, Threadfin, Kodi, TiviMate, VLC.
+    Universally compatible with IPTV portals, set-top boxes, Kodi, TiviMate, VLC.
     """
     data = get_cached_channels(need_epg=False)
     if not data or data.get("status") != "OK":
@@ -91,7 +91,7 @@ def generate_m3u_playlist(
     if catchup is not None:
         include_catchup = catchup.lower() in ("vod", "default", "1", "true", "kodi", "append")
     else:
-        include_catchup = bool(config.get("m3u_catchup", False))
+        include_catchup = bool(config.get("m3u_catchup", True))
 
     if not no_epg:
         lines = [f'#EXTM3U url-tvg="{base_url}/epg.xml" x-tvg-url="{base_url}/epg.xml"']
@@ -112,7 +112,7 @@ def generate_m3u_playlist(
         cat_names = [categories[c] for c in ch.get("category", []) if c in categories and c != 1000]
         group_title = cat_names[0] if cat_names else "General"
 
-        # Standard numeric channel ID (clean for PostgreSQL/StreamCube)
+        # Standard numeric channel ID
         tvg_id = f"{cid}.id.com" if legacy_id else str(cid)
 
         # Standard stream URL
@@ -122,7 +122,7 @@ def generate_m3u_playlist(
         if include_catchup and ch.get("catchup"):
             catchup_days = max(1, int(ch.get("catchup_duration", 7) or 7))
             catchup_source = f"{base_url}/stream/{cid}/{{catchup-id}}.m3u8{q_param}"
-            catchup_tag = f'catchup="vod" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
+            catchup_tag = f'catchup="append" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
 
         if catchup_tag:
             extinf = f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{cname}" tvg-logo="{icon}" group-title="{group_title}" tvg-chno="{idx}" {catchup_tag},{cname}'

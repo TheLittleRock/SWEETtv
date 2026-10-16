@@ -30,6 +30,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "direct_redirect": True,   # Direct 302 to Sweet.tv CDN vs server proxy
     "cache_ttl_channels": 900,  # 15 mins
     "cache_ttl_epg": 3600,      # 1 hour
+    "xtream_user": "sweettv",   # Xtream Codes API username
+    "xtream_password": "sweet", # Xtream Codes API password
+    "m3u_catchup": True,        # Include catchup tags in M3U by default
 }
 
 
@@ -93,6 +96,18 @@ class ConfigManager:
             if env_redirect:
                 self.data["direct_redirect"] = env_redirect.lower() in ("true", "1", "yes")
 
+            env_x_user = (os.getenv("XTREAM_USER") or "").strip()
+            if env_x_user:
+                self.data["xtream_user"] = env_x_user
+
+            env_x_pwd = (os.getenv("XTREAM_PASSWORD") or "").strip()
+            if env_x_pwd:
+                self.data["xtream_password"] = env_x_pwd
+
+            env_catchup = (os.getenv("M3U_CATCHUP") or "").strip()
+            if env_catchup:
+                self.data["m3u_catchup"] = env_catchup.lower() in ("true", "1", "yes")
+
             self._ensure_defaults()
 
     def _ensure_defaults(self):
@@ -154,6 +169,14 @@ class ConfigManager:
     @property
     def direct_redirect(self) -> bool:
         return bool(self.get("direct_redirect", True))
+
+    @property
+    def xtream_user(self) -> str:
+        return self.get("xtream_user", "sweettv")
+
+    @property
+    def xtream_password(self) -> str:
+        return self.get("xtream_password", "sweet")
 
 
 # Global configuration instance

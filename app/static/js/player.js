@@ -43,13 +43,14 @@ function formatProgrammeDate(unixTimestamp) {
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
+    const isCs = typeof currentLang !== "undefined" && currentLang === "cs";
 
     if (d.toDateString() === today.toDateString()) {
-        return "Today";
+        return isCs ? "Dnes" : "Today";
     } else if (d.toDateString() === yesterday.toDateString()) {
-        return "Yesterday";
+        return isCs ? "Včera" : "Yesterday";
     } else {
-        return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        return d.toLocaleDateString(isCs ? "cs-CZ" : "en-US", { weekday: 'short', month: 'short', day: 'numeric' });
     }
 }
 

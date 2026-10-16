@@ -43,7 +43,7 @@ async def player_api(
 ):
     """
     Xtream Codes API v2 emulation endpoint.
-    Compatible with StreamCube, IPTV Smarters, TiviMate, OTT Navigator, XCIPTV.
+    Compatible with IPTV clients, IPTV Smarters, TiviMate, OTT Navigator, XCIPTV.
     """
     # Accept params from form body if POST
     if request.method == "POST":
@@ -59,8 +59,17 @@ async def player_api(
         except Exception:
             pass
 
-    user = username or "sweettv"
-    pwd = password or "sweettv"
+    valid_user = config.xtream_user
+    valid_pwd = config.xtream_password
+
+    # If explicit credentials were submitted, validate against configured credentials
+    if username is not None and password is not None:
+        if username.strip() != valid_user or password.strip() != valid_pwd:
+            logger.warning(f"Xtream authentication rejected for user '{username}'")
+            return JSONResponse(content={"user_info": {"auth": 0}})
+
+    user = username or valid_user
+    pwd = password or valid_pwd
 
     base_url = get_effective_base_url(request)
     parsed = urlparse(base_url)

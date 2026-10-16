@@ -1,0 +1,284 @@
+/**
+ * Internationalization (i18n) for Sweet.tv IPTV Server & Web TV
+ * Supports English (en) and Czech (cs) with localStorage persistence.
+ */
+
+const I18N = {
+  en: {
+    // Navigation
+    "nav.live_tv": "Live TV",
+    "nav.playlists": "Playlists & EPG",
+    "nav.status": "Status",
+    "nav.settings": "Settings",
+    "nav.guides": "Guides",
+    "nav.connect": "Connect",
+    "nav.reconnect": "Re-connect",
+    "nav.connected": "Connected",
+    "nav.checking": "Checking...",
+    "nav.disconnected": "Disconnected",
+
+    // Quick toggle
+    "quick.live_tv": "📺 Live Web TV Player",
+    "quick.copy_links": "🔗 Copy M3U & EPG Links",
+    "quick.copy_m3u": "📋 Copy M3U",
+    "quick.copy_epg": "📅 Copy EPG",
+
+    // Player
+    "player.select_channel": "Select a Channel to Watch",
+    "player.select_channel_desc": "Browse the channel list on the right and click any channel to start high-definition streaming.",
+    "player.buffering": "Buffering highest quality stream...",
+    "player.quality_label": "Stream Quality & Codec",
+    "player.catchup_btn": "Catchup Archive",
+    "player.reload_btn": "Reload",
+    "player.fullscreen_btn": "Fullscreen",
+    "player.return_live": "Return to Live TV",
+    "player.watching_replay": "Watching Catchup Archive:",
+    "player.catchup_schedule": "⏪ 7-Day Catchup Replay Schedule",
+    "player.archive_available": "Archive Available",
+    "player.close": "Close &times;",
+    "player.no_channel": "No Channel Selected",
+    "player.catchup_badge": "Catchup Available",
+    "player.search_placeholder": "Search channels...",
+    "player.all_categories": "All Categories",
+    "player.next": "Next",
+    "player.now": "NOW",
+    "player.replay": "Replay",
+    "player.live": "LIVE",
+    "player.no_epg_found": "No schedule details available for this day.",
+
+    // Links Tab
+    "links.title": "Playlists, EPG & Integration URLs",
+    "links.subtitle": "Pre-formatted URLs for IPTV players, Kodi, Smart TVs, and Portals.",
+    "links.m3u_best_title": "M3U Playlist • Highest Bitrate",
+    "links.m3u_best_desc": "Locks to the highest available bitrate (4K UHD / 1080p FHD 50fps) on all channels.",
+    "links.m3u_auto_title": "M3U Playlist • Adaptive Auto",
+    "links.m3u_auto_desc": "Adaptive bitrate master playlist. Adjusts resolution and bandwidth based on network speed.",
+    "links.epg_gz_title": "XMLTV EPG Guide • Gzip Compressed",
+    "links.epg_gz_desc": "Ultra-fast compressed electronic program guide. Recommended for Kodi, TiviMate, and mobile.",
+    "links.epg_xml_title": "XMLTV EPG Guide • Plain XML",
+    "links.epg_xml_desc": "Standard uncompressed XMLTV guide. Compatible with all players and IPTV apps.",
+    "links.m3u_catchup_title": "M3U Playlist • With Catchup Tags",
+    "links.m3u_catchup_desc": "Includes embedded catchup replay tags for Kodi PVR and TiviMate to enable 7-day replay.",
+    "links.m3u_clean_title": "M3U Playlist • Clean Standalone",
+    "links.m3u_clean_desc": "Clean playlist without url-tvg header. Ideal for IPTV portals syncing channels independently of EPG.",
+    "links.stalker_title": "Stalker / MAG Portal • Ministra Middleware",
+    "links.stalker_desc": "Stalker portal emulation for MAG set-top boxes and IPTV apps. Loads channels, categories, and EPG via native JSON-RPC without M3U parsing.",
+    "links.xtream_title": "XTream Codes Server • Native JSON Connection",
+    "links.xtream_desc": "Connect via XTream Codes API in IPTV players. Native JSON eliminates M3U parsing bugs and loads 7-day EPG.",
+    "links.copy_btn": "Copy URL",
+    "links.download_btn": "Download",
+    "links.server_url": "Server URL / Host:",
+    "links.username": "Username:",
+    "links.password": "Password:",
+    "links.portal_url": "Portal URL:",
+    "links.mac_address": "MAC Address:",
+    "links.mac_desc": "Use your device's MAC",
+
+    // Status Tab
+    "status.title": "System Status & Diagnostics",
+    "status.subtitle": "Real-time authentication lifecycle, API token countdown, and provider parameters.",
+    "status.account": "Sweet.tv Account",
+    "status.channels": "Total Channels",
+    "status.token": "Token Valid For",
+    "status.uptime": "Server Uptime",
+    "status.delivery": "Stream Delivery",
+    "status.direct_cdn": "Direct CDN 302",
+    "status.proxied": "Server Proxied",
+    "status.hardware_info": "Device & Provider Parameters",
+    "status.uuid": "Device UUID:",
+    "status.mac": "Device MAC:",
+    "status.ext_url": "Configured Public URL:",
+    "status.direct_stream": "Direct Stream Redirect:",
+    "status.disconnect_btn": "Disconnect Account",
+
+    // Settings Tab
+    "settings.title": "Server & Stream Configuration",
+    "settings.subtitle": "Customize language/region, external domain for Nginx Proxy Manager, and quality defaults.",
+    "settings.country_label": "Country / Region Code",
+    "settings.country_desc": "Changes the EPG language and region-specific channel packages.",
+    "settings.ext_url_label": "External Domain / Public URL",
+    "settings.ext_url_desc": "Set this when running behind Nginx Proxy Manager (NPM) or public domain so M3U and EPG links use your public HTTPS domain.",
+    "settings.quality_label": "Default Playlist Stream Quality",
+    "settings.delivery_label": "Stream Delivery Technique",
+    "settings.xtream_user_label": "Xtream API Username",
+    "settings.xtream_user_desc": "Username for Xtream Codes API players.",
+    "settings.xtream_pwd_label": "Xtream API Password",
+    "settings.xtream_pwd_desc": "Password for Xtream Codes API players.",
+    "settings.catchup_checkbox": "Include Catchup Tags in Default M3U Playlist",
+    "settings.catchup_desc": "When checked, catchup tags are added to default M3U links for 7-day replay.",
+    "settings.save_btn": "Save Configuration",
+    "settings.refresh_btn": "Refresh Cache",
+
+    // Messages
+    "msg.copied": "Copied to clipboard!",
+    "msg.settings_saved": "Settings updated successfully!",
+    "msg.settings_failed": "Failed to update settings.",
+    "msg.cache_refreshed": "Channels and EPG cache refreshed!",
+    "msg.logged_out": "Account disconnected."
+  },
+  cs: {
+    // Navigace
+    "nav.live_tv": "Živé vysílání",
+    "nav.playlists": "Playlisty a EPG",
+    "nav.status": "Stav systému",
+    "nav.settings": "Nastavení",
+    "nav.guides": "Návody",
+    "nav.connect": "Připojit",
+    "nav.reconnect": "Znovu připojit",
+    "nav.connected": "Připojeno",
+    "nav.checking": "Ověřuji...",
+    "nav.disconnected": "Odpojeno",
+
+    // Rychlé přepínání
+    "quick.live_tv": "📺 Živé webové vysílání",
+    "quick.copy_links": "🔗 Odkazy na M3U a EPG",
+    "quick.copy_m3u": "📋 Kopírovat M3U",
+    "quick.copy_epg": "📅 Kopírovat EPG",
+
+    // Přehrávač
+    "player.select_channel": "Vyberte kanál pro sledování",
+    "player.select_channel_desc": "Procházejte seznam stanic vpravo a klikněte na kanál pro spuštění přehrávání ve vysoké kvalitě.",
+    "player.buffering": "Načítám stream v nejvyšší kvalitě...",
+    "player.quality_label": "Kvalita a kodek streamu",
+    "player.catchup_btn": "Archiv pořadů",
+    "player.reload_btn": "Obnovit",
+    "player.fullscreen_btn": "Celá obrazovka",
+    "player.return_live": "Zpět na živé vysílání",
+    "player.watching_replay": "Sledujete pořad z archivu:",
+    "player.catchup_schedule": "⏪ 7denní televizní archiv (Catchup)",
+    "player.archive_available": "Archiv dostupný",
+    "player.close": "Zavřít &times;",
+    "player.no_channel": "Není vybrán žádný kanál",
+    "player.catchup_badge": "Archiv dostupný",
+    "player.search_placeholder": "Hledat kanál...",
+    "player.all_categories": "Všechny kategorie",
+    "player.next": "Další",
+    "player.now": "PRÁVĚ BĚŽÍ",
+    "player.replay": "Přehrát",
+    "player.live": "ŽIVĚ",
+    "player.no_epg_found": "Pro tento den nejsou k dispozici žádné pořady.",
+
+    // Záložka Odkazy
+    "links.title": "M3U playlisty, EPG a portálové odkazy",
+    "links.subtitle": "Předpřipravené adresy pro IPTV aplikace, Kodi, Smart TV a portály.",
+    "links.m3u_best_title": "M3U playlist • Nejvyšší kvalita (Best)",
+    "links.m3u_best_desc": "Nastaví nejvyšší dostupný datový tok (4K UHD / 1080p FHD 50fps) na všech kanálech.",
+    "links.m3u_auto_title": "M3U playlist • Adaptivní kvalita (Auto)",
+    "links.m3u_auto_desc": "Adaptivní master playlist. Automaticky upravuje rozlišení a datový tok podle rychlosti sítě.",
+    "links.epg_gz_title": "XMLTV EPG programový průvodce (GZ)",
+    "links.epg_gz_desc": "Ultrarychlé komprimované EPG. Doporučeno pro Kodi, TiviMate a mobilní zařízení.",
+    "links.epg_xml_title": "XMLTV EPG programový průvodce (XML)",
+    "links.epg_xml_desc": "Standardní nekomprimovaný XMLTV průvodce. Kompatibilní se všemi IPTV přehrávači.",
+    "links.m3u_catchup_title": "M3U playlist • S tagy pro televizní archiv",
+    "links.m3u_catchup_desc": "Obsahuje tagy pro zpětné přehrávání (až 7 dní) pro Kodi PVR a TiviMate.",
+    "links.m3u_clean_title": "M3U playlist • Čistý samostatný (bez auto-EPG)",
+    "links.m3u_clean_desc": "Čistý playlist bez url-tvg hlavičky. Ideální pro IPTV portály synchronizující kanály nezávisle na EPG.",
+    "links.stalker_title": "Stalker / MAG Portál • Ministra Middleware",
+    "links.stalker_desc": "Emulace Stalker portálu pro MAG set-top boxy a IPTV aplikace. Načítá kanály, kategorie a EPG přímo přes JSON-RPC bez parsování M3U.",
+    "links.xtream_title": "XTream Codes Server • Nativní JSON připojení",
+    "links.xtream_desc": "Připojení přes XTream Codes API v IPTV aplikacích. Nativní JSON eliminuje chyby parsování a načítá 7denní EPG.",
+    "links.copy_btn": "Kopírovat URL",
+    "links.download_btn": "Stáhnout",
+    "links.server_url": "Server URL / Hostitel:",
+    "links.username": "Uživatelské jméno:",
+    "links.password": "Heslo:",
+    "links.portal_url": "URL Portálu:",
+    "links.mac_address": "MAC adresa:",
+    "links.mac_desc": "Použijte MAC vašeho zařízení",
+
+    // Záložka Stav
+    "status.title": "Stav systému a diagnostika",
+    "status.subtitle": "Stav přihlášení v reálném čase, odpočet platnosti tokenu a parametry poskytovatele.",
+    "status.account": "Sweet.tv Účet",
+    "status.channels": "Celkem kanálů",
+    "status.token": "Platnost tokenu",
+    "status.uptime": "Doba běhu serveru",
+    "status.delivery": "Přenos streamu",
+    "status.direct_cdn": "Přímé CDN 302",
+    "status.proxied": "Proxy přes server",
+    "status.hardware_info": "Parametry zařízení a poskytovatele",
+    "status.uuid": "UUID zařízení:",
+    "status.mac": "MAC adresa zařízení:",
+    "status.ext_url": "Nastavená veřejná URL:",
+    "status.direct_stream": "Přímé přesměrování streamu:",
+    "status.disconnect_btn": "Odpojit účet",
+
+    // Záložka Nastavení
+    "settings.title": "Konfigurace serveru a streamování",
+    "settings.subtitle": "Nastavení jazyka/regionu, veřejné domény pro Nginx Proxy Manager a výchozí kvality.",
+    "settings.country_label": "Země / Kód regionu",
+    "settings.country_desc": "Mění jazyk EPG průvodce a regionální balíčky kanálů.",
+    "settings.ext_url_label": "Veřejná doména / Veřejná URL adresa",
+    "settings.ext_url_desc": "Vyplňte při provozu za Nginx Proxy Managerem (NPM) nebo veřejnou doménou, aby odkazy používaly vaši HTTPS doménu.",
+    "settings.quality_label": "Výchozí kvalita streamů v playlistu",
+    "settings.delivery_label": "Způsob předávání streamu",
+    "settings.xtream_user_label": "Xtream API uživatelské jméno",
+    "settings.xtream_user_desc": "Uživatelské jméno pro přehrávače s podporou Xtream Codes API.",
+    "settings.xtream_pwd_label": "Xtream API heslo",
+    "settings.xtream_pwd_desc": "Heslo pro přehrávače s podporou Xtream Codes API.",
+    "settings.catchup_checkbox": "Zahrnout tagy pro archiv (Catchup) ve výchozím M3U playlistu",
+    "settings.catchup_desc": "Při zaškrtnutí budou do výchozího playlistu vloženy tagy pro 7denní archiv.",
+    "settings.save_btn": "Uložit nastavení",
+    "settings.refresh_btn": "Obnovit mezipaměť",
+
+    // Hlášení
+    "msg.copied": "Zkopírováno do schránky!",
+    "msg.settings_saved": "Nastavení bylo úspěšně uloženo!",
+    "msg.settings_failed": "Chyba při ukládání nastavení.",
+    "msg.cache_refreshed": "Mezipaměť kanálů a EPG byla obnovena!",
+    "msg.logged_out": "Účet byl odpojen."
+  }
+};
+
+let currentLang = localStorage.getItem("sweettv_lang") || "cs";
+
+function t(key) {
+  const dict = I18N[currentLang] || I18N.en;
+  return dict[key] || (I18N.en[key] || key);
+}
+
+function setLanguage(lang) {
+  if (lang !== "en" && lang !== "cs") lang = "cs";
+  currentLang = lang;
+  localStorage.setItem("sweettv_lang", lang);
+
+  // Update navbar button styles
+  const btnEn = document.getElementById("lang-btn-en");
+  const btnCs = document.getElementById("lang-btn-cs");
+  if (btnEn && btnCs) {
+    if (lang === "cs") {
+      btnCs.className = "px-2 py-1 rounded font-bold transition-all text-cyan-400 bg-slate-800 shadow-sm";
+      btnEn.className = "px-2 py-1 rounded font-bold transition-all text-slate-400 hover:text-white";
+    } else {
+      btnEn.className = "px-2 py-1 rounded font-bold transition-all text-cyan-400 bg-slate-800 shadow-sm";
+      btnCs.className = "px-2 py-1 rounded font-bold transition-all text-slate-400 hover:text-white";
+    }
+  }
+
+  // Update text of elements with data-i18n
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const val = t(key);
+    if (val) {
+      el.innerHTML = val;
+    }
+  });
+
+  // Update placeholder of elements with data-i18n-placeholder
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    const val = t(key);
+    if (val) {
+      el.setAttribute("placeholder", val);
+    }
+  });
+
+  // Notify components if needed
+  if (window.onLanguageChanged) {
+    window.onLanguageChanged(lang);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setLanguage(currentLang);
+});

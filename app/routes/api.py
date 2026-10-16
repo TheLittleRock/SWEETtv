@@ -22,6 +22,8 @@ class SettingsUpdate(BaseModel):
     default_quality: Optional[str] = None
     direct_redirect: Optional[bool] = None
     m3u_catchup: Optional[bool] = None
+    xtream_user: Optional[str] = None
+    xtream_password: Optional[str] = None
 
 
 @router.get("/version")
@@ -57,6 +59,9 @@ def get_status() -> Dict[str, Any]:
         "external_url": config.external_url,
         "default_quality": config.default_quality,
         "direct_redirect": config.direct_redirect,
+        "xtream_user": config.xtream_user,
+        "xtream_password": config.xtream_password,
+        "m3u_catchup": config.get("m3u_catchup", True),
         "uptime_seconds": int(now - SERVER_START_TIME),
     }
 
@@ -250,6 +255,12 @@ def update_settings(payload: SettingsUpdate) -> Dict[str, Any]:
 
     if payload.m3u_catchup is not None:
         changed["m3u_catchup"] = payload.m3u_catchup
+
+    if payload.xtream_user is not None and payload.xtream_user.strip():
+        changed["xtream_user"] = payload.xtream_user.strip()
+
+    if payload.xtream_password is not None and payload.xtream_password.strip():
+        changed["xtream_password"] = payload.xtream_password.strip()
 
     if changed:
         config.update(changed)

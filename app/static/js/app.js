@@ -192,10 +192,10 @@ function copyText(text, btnElement) {
     navigator.clipboard.writeText(text).then(() => {
         const originalText = btnElement ? btnElement.innerHTML : "";
         if (btnElement) {
-            btnElement.textContent = "Copied!";
+            btnElement.textContent = typeof t === "function" ? t("msg.copied") : "Copied!";
             btnElement.classList.add("bg-emerald-600");
         }
-        showToast("URL copied to clipboard!", "success");
+        showToast(typeof t === "function" ? t("msg.copied") : "URL copied to clipboard!", "success");
         setTimeout(() => {
             if (btnElement) {
                 btnElement.innerHTML = originalText;
@@ -249,12 +249,17 @@ document.addEventListener("DOMContentLoaded", () => {
         settingsForm.addEventListener("submit", async (e) => {
             e.preventDefault();
             const catchupInput = document.getElementById("setting-m3u-catchup");
+            const xUserEl = document.getElementById("setting-xtream-user");
+            const xPwdEl = document.getElementById("setting-xtream-password");
+
             const payload = {
                 countryCode: document.getElementById("setting-country-code").value,
                 external_url: document.getElementById("setting-external-url").value,
                 default_quality: document.getElementById("setting-default-quality").value,
                 direct_redirect: document.getElementById("setting-direct-redirect").value === "true",
-                m3u_catchup: catchupInput ? catchupInput.checked : false,
+                m3u_catchup: catchupInput ? catchupInput.checked : true,
+                xtream_user: xUserEl ? xUserEl.value.trim() : "sweettv",
+                xtream_password: xPwdEl ? xPwdEl.value.trim() : "sweet",
             };
 
             try {
@@ -264,11 +269,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     body: JSON.stringify(payload),
                 });
                 if (res.ok) {
-                    showToast("Settings updated successfully!", "success");
+                    showToast(typeof t === "function" ? t("msg.settings_saved") : "Settings updated successfully!", "success");
+                    // Update display on XTream card if present
+                    const dispUser = document.getElementById("display-xtream-user");
+                    const dispPwd = document.getElementById("display-xtream-pwd");
+                    if (dispUser && payload.xtream_user) dispUser.textContent = payload.xtream_user;
+                    if (dispPwd && payload.xtream_password) dispPwd.textContent = payload.xtream_password;
                     updateSystemStatus();
                     if (window.loadChannels) window.loadChannels();
                 } else {
-                    showToast("Failed to update settings.", "error");
+                    showToast(typeof t === "function" ? t("msg.settings_failed") : "Failed to update settings.", "error");
                 }
             } catch (err) {
                 showToast("Network error saving settings.", "error");
@@ -284,12 +294,12 @@ document.addEventListener("DOMContentLoaded", () => {
             refreshBtn.textContent = "Refreshing...";
             try {
                 await fetch("/api/cache/refresh", { method: "POST" });
-                showToast("Channels and EPG cache refreshed!", "success");
+                showToast(typeof t === "function" ? t("msg.cache_refreshed") : "Channels and EPG cache refreshed!", "success");
                 updateSystemStatus();
                 if (window.loadChannels) window.loadChannels();
             } finally {
                 refreshBtn.disabled = false;
-                refreshBtn.textContent = "Refresh Cache";
+                refreshBtn.textContent = typeof t === "function" ? t("settings.refresh_btn") : "Refresh Cache";
             }
         });
     }
