@@ -8,8 +8,8 @@ const I18N = {
   en: {
     // Navigation
     "nav.live_tv": "Live TV",
-    "nav.playlists": "Playlists & EPG",
-    "nav.users": "User Management",
+    "nav.playlists": "Playlists",
+    "nav.users": "Users",
     "nav.logout": "Log out",
     "nav.account": "Account",
     "nav.account_short": "Account",
@@ -281,13 +281,13 @@ const I18N = {
   },
   cs: {
     // Navigace
-    "nav.live_tv": "Živé vysílání",
-    "nav.playlists": "Playlisty a EPG",
-    "nav.users": "Správa uživatelů",
+    "nav.live_tv": "Živé TV",
+    "nav.playlists": "Playlisty",
+    "nav.users": "Uživatelé",
     "nav.logout": "Odhlásit",
-    "nav.account": "Správa účtu",
+    "nav.account": "Účet",
     "nav.account_short": "Účet",
-    "nav.status": "Stav systému",
+    "nav.status": "Stav",
     "nav.settings": "Nastavení",
     "nav.guides": "Návody",
     "nav.connect": "Připojit",

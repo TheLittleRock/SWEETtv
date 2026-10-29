@@ -98,15 +98,22 @@ body {
 .nav-tab {
     display: inline-flex;
     align-items: center;
-    padding: 0.45rem 0.9rem;
-    border-radius: 0.65rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
+    padding: 0.35rem 0.55rem;
+    border-radius: 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: #94a3b8;
     background: transparent;
     transition: all 0.2s ease;
     border: 1px solid transparent;
     cursor: pointer;
+    white-space: nowrap;
+}
+@media (min-width: 1280px) {
+    .nav-tab {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8125rem;
+    }
 }
 .nav-tab:hover {
     color: #f8fafc;

@@ -372,15 +372,16 @@ async function loadUsersList() {
     try {
         const res = await fetch("/api/users");
         if (!res.ok) {
-            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-red-400">Chyba načítání uživatelů</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-red-400">Chyba načítání uživatelů (${res.status})</td></tr>`;
             return;
         }
-        currentUsers = await res.json();
+        const data = await res.json();
+        currentUsers = Array.isArray(data) ? data : (data.users || []);
         renderUsersTable(currentUsers);
     } catch (e) {
         console.error("Failed to load users:", e);
         if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-red-400">Chyba spojení se serverem</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-red-400">Chyba spojení se serverem: ${e.message || e}</td></tr>`;
         }
     }
 }
@@ -389,14 +390,16 @@ function renderUsersTable(users) {
     const tbody = document.getElementById("users-table-body");
     if (!tbody) return;
 
-    if (!users || users.length === 0) {
+    const list = Array.isArray(users) ? users : ((users && Array.isArray(users.users)) ? users.users : []);
+
+    if (!list || list.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-500">${typeof t === "function" ? t("users.empty") : "No users found."}</td></tr>`;
         return;
     }
 
     const currentUsername = document.getElementById("btn-open-profile")?.querySelector("span")?.textContent?.trim() || "";
 
-    tbody.innerHTML = users.map(u => {
+    tbody.innerHTML = list.map(u => {
         const isAdmin = u.role === "admin";
         const roleBadge = isAdmin
             ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/60">Admin</span>`
@@ -412,8 +415,19 @@ function renderUsersTable(users) {
         }
 
         const maskedToken = u.token ? `${u.token.substring(0, 6)}••••••••` : "—";
-        const expiresStr = u.expires_at ? new Date(u.expires_at).toLocaleDateString() : (typeof t === "function" ? t("users.never_expires") : "Never");
-        const lastLoginStr = u.last_login ? new Date(u.last_login).toLocaleString() : (typeof t === "function" ? t("users.never_active") : "Never");
+        let expiresStr = typeof t === "function" ? t("users.never_expires") : "Bez expirace";
+        if (u.expires_at) {
+            try {
+                expiresStr = new Date(u.expires_at).toLocaleDateString();
+            } catch (_) {}
+        }
+        let lastLoginStr = typeof t === "function" ? t("users.never_active") : "Nikdy";
+        const rawLogin = u.last_login_at || u.last_login;
+        if (rawLogin) {
+            try {
+                lastLoginStr = new Date(rawLogin).toLocaleString();
+            } catch (_) {}
+        }
 
         const isSelf = u.username === currentUsername;
         const deleteBtn = isSelf 
@@ -468,7 +482,8 @@ function closeCreateUserModal() {
 }
 
 function openEditUserModalById(id) {
-    const user = currentUsers.find(u => u.id === id);
+    const list = Array.isArray(currentUsers) ? currentUsers : ((currentUsers && currentUsers.users) ? currentUsers.users : []);
+    const user = list.find(u => u.id === id);
     if (!user) return;
     openEditUserModal(user);
 }
