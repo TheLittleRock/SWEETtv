@@ -299,9 +299,17 @@ def build_proxy_master_m3u8(
         target_height = int(selected_quality)
 
     if target_height and details.get("variants"):
+        # 1. Exact height match
         for v in details["variants"]:
             if v["height"] == target_height:
                 return build_proxy_variant_m3u8(v["url"], base_url)
+        # 2. Closest available variant <= target_height (e.g. channel only offers 720p or 576p)
+        candidates = [v for v in details["variants"] if v["height"] <= target_height]
+        if candidates:
+            best_cand = max(candidates, key=lambda x: x["height"])
+            return build_proxy_variant_m3u8(best_cand["url"], base_url)
+        # 3. Fallback to highest available variant overall
+        return build_proxy_variant_m3u8(details["variants"][0]["url"], base_url)
 
     # Rewrite master manifest lines (Auto Adaptive Multi-Bitrate)
     master_url = details.get("master_url", "")
@@ -363,6 +371,12 @@ def build_proxy_variant_m3u8(variant_url: str, base_url: str) -> Tuple[str, str]
                         abs_kurl = urljoin(variant_url, raw_kuri)
                         return f'URI="{abs_kurl}"'
                     rewritten.append(re.sub(r'URI="([^"]+)"', _rewrite_key_uri, stripped))
+                elif stripped.startswith("#EXT-X-MAP:") and 'URI="' in stripped:
+                    def _rewrite_map_uri(match):
+                        raw_muri = match.group(1)
+                        abs_murl = urljoin(variant_url, raw_muri)
+                        return f'URI="{abs_murl}"'
+                    rewritten.append(re.sub(r'URI="([^"]+)"', _rewrite_map_uri, stripped))
                 else:
                     rewritten.append(line)
             else:

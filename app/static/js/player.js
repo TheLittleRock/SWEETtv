@@ -307,11 +307,12 @@ async function fetchStreamInfo(channelId, epgId = null) {
 // Populate Quality Selector Options
 function updateQualitySelectOptions(variants) {
     if (!qualitySelect) return;
-    const currentVal = qualitySelect.value;
+    const currentVal = qualitySelect.value || "1080p";
     const autoLabel = typeof t === "function" ? (t("player.quality_auto") || "Auto (Adaptivní kvalita)") : "Auto (Adaptivní kvalita)";
     const bestLabel = typeof t === "function" ? (t("player.quality_best") || "Nejvyšší datový tok (Vynutit 4K/FHD)") : "Nejvyšší datový tok (Vynutit 4K/FHD)";
+    
     let optionsHtml = `
-        <option value="auto">${autoLabel}</option>
+        <option value="1080p">1080p (Full HD - Doporučeno)</option>
         <option value="best">${bestLabel}</option>
     `;
 
@@ -327,16 +328,18 @@ function updateQualitySelectOptions(variants) {
         }
     } else {
         optionsHtml += `
-            <option value="1080p">1080p (Full HD)</option>
             <option value="720p">720p (HD)</option>
             <option value="360p">360p (Úsporný režim / Data Saver)</option>
         `;
     }
+    optionsHtml += `<option value="auto">${autoLabel}</option>`;
 
     qualitySelect.innerHTML = optionsHtml;
 
     if ([...qualitySelect.options].some(o => o.value === currentVal)) {
         qualitySelect.value = currentVal;
+    } else {
+        qualitySelect.value = "1080p";
     }
 }
 
@@ -346,6 +349,8 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
 
     if (placeholderEl) placeholderEl.classList.add("hidden");
     if (loadingEl) loadingEl.classList.remove("hidden");
+    const unmuteBtn = document.getElementById("btn-unmute-overlay");
+    if (unmuteBtn) unmuteBtn.classList.add("hidden");
 
     // Manage Replay Notification Banner
     if (replayBanner) {
@@ -357,6 +362,25 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
         }
     }
 
+    function attemptPlay() {
+        const playPromise = videoEl.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                if (loadingEl) loadingEl.classList.add("hidden");
+            }).catch(err => {
+                console.log("Autoplay with audio blocked by browser, attempting muted play...", err);
+                videoEl.muted = true;
+                videoEl.play().then(() => {
+                    if (loadingEl) loadingEl.classList.add("hidden");
+                    if (unmuteBtn) unmuteBtn.classList.remove("hidden");
+                }).catch(e => {
+                    console.warn("Muted autoplay also blocked:", e);
+                    if (loadingEl) loadingEl.classList.add("hidden");
+                });
+            });
+        }
+    }
+
     if (Hls.isSupported()) {
         if (hlsInstance) {
             hlsInstance.destroy();
@@ -364,20 +388,23 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
 
         hlsInstance = new Hls({
             enableWorker: true,
-            lowLatencyMode: !isCatchup, // Disable low latency mode for catchup archive VODs
-            backBufferLength: 60,
+            lowLatencyMode: false, // Disabled for standard CDN to prevent live-edge stalls
+            liveSyncDurationCount: 3, // Safe 3-segment buffer (~6-9s) for instantaneous smooth start
+            liveMaxLatencyDurationCount: 8,
             maxBufferLength: 30,
             maxMaxBufferLength: 60,
+            maxBufferSize: 60 * 1000 * 1000,
+            maxBufferHole: 0.5,
+            highBufferWatchdogPeriod: 2,
+            nudgeOffset: 0.1,
+            nudgeMaxRetry: 5,
         });
 
         hlsInstance.loadSource(streamEndpoint);
         hlsInstance.attachMedia(videoEl);
 
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-            if (loadingEl) loadingEl.classList.add("hidden");
-            videoEl.play().catch(() => {
-                console.log("Autoplay waiting for user gesture.");
-            });
+            attemptPlay();
         });
 
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
@@ -406,8 +433,7 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
         // Native HLS (Safari on macOS/iOS)
         videoEl.src = streamEndpoint;
         videoEl.addEventListener("loadedmetadata", () => {
-            if (loadingEl) loadingEl.classList.add("hidden");
-            videoEl.play();
+            attemptPlay();
         });
     } else {
         if (loadingEl) loadingEl.classList.add("hidden");
@@ -422,7 +448,7 @@ function playCurrentChannelStream() {
     if (!currentChannel) return;
     currentReplayProgram = null;
 
-    const quality = qualitySelect ? qualitySelect.value : "auto";
+    const quality = qualitySelect ? qualitySelect.value : "1080p";
     const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}`;
 
     loadHlsStream(streamEndpoint, false);
@@ -433,7 +459,7 @@ function playCatchupProgram(prog) {
     if (!currentChannel || !prog) return;
     currentReplayProgram = prog;
 
-    const quality = qualitySelect ? qualitySelect.value : "auto";
+    const quality = qualitySelect ? qualitySelect.value : "1080p";
     const streamEndpoint = `/stream/${currentChannel.id}/${prog.id}.m3u8?quality=${quality}`;
     const replayTitle = `${prog.title} (${formatProgrammeDate(prog.start)} ${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)})`;
 
@@ -723,6 +749,40 @@ document.addEventListener("DOMContentLoaded", () => {
                     document.exitFullscreen();
                 }
             }
+        });
+    }
+
+    // Video Playback Events to manage loading indicator & unmute overlay
+    if (videoEl) {
+        videoEl.addEventListener("playing", () => {
+            if (loadingEl) loadingEl.classList.add("hidden");
+        });
+        videoEl.addEventListener("canplay", () => {
+            if (loadingEl) loadingEl.classList.add("hidden");
+        });
+        videoEl.addEventListener("waiting", () => {
+            if (loadingEl) loadingEl.classList.remove("hidden");
+        });
+        videoEl.addEventListener("seeking", () => {
+            if (loadingEl) loadingEl.classList.remove("hidden");
+        });
+        videoEl.addEventListener("seeked", () => {
+            if (loadingEl) loadingEl.classList.add("hidden");
+        });
+        videoEl.addEventListener("volumechange", () => {
+            const unmuteBtn = document.getElementById("btn-unmute-overlay");
+            if (!videoEl.muted && unmuteBtn) {
+                unmuteBtn.classList.add("hidden");
+            }
+        });
+    }
+
+    // Unmute Overlay Button
+    const unmuteOverlayBtn = document.getElementById("btn-unmute-overlay");
+    if (unmuteOverlayBtn && videoEl) {
+        unmuteOverlayBtn.addEventListener("click", () => {
+            videoEl.muted = false;
+            unmuteOverlayBtn.classList.add("hidden");
         });
     }
 

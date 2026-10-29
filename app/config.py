@@ -26,7 +26,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "access_token_last_update": 0,
     "access_token_lifetime": 0,
     "external_url": "",
-    "default_quality": "auto",  # 'auto', 'best', '1080p', '720p'
+    "default_quality": "1080p",  # '1080p', 'best', '720p', 'auto'
     "direct_redirect": True,   # Direct 302 to Sweet.tv CDN vs server proxy
     "cache_ttl_channels": 900,  # 15 mins
     "cache_ttl_epg": 3600,      # 1 hour
@@ -181,7 +181,7 @@ class ConfigManager:
 
     @property
     def default_quality(self) -> str:
-        return self.get("default_quality", "auto")
+        return self.get("default_quality", "1080p")
 
     @property
     def direct_redirect(self) -> bool:

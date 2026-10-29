@@ -8,6 +8,6 @@
     "access_token_last_update": 0,
     "access_token_lifetime": 0,
     "external_url": "",
-    "default_quality": "auto",
+    "default_quality": "1080p",
     "direct_redirect": true
 }

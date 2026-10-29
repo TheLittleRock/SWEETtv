@@ -97,8 +97,10 @@ async function updateSystemStatus() {
             indicatorDot.className = "w-2 h-2 rounded-full bg-emerald-400";
             const connStr = typeof t === "function" ? t("nav.connected") : "Connected";
             statusText.textContent = `${connStr} (${data.country_code.toUpperCase()})`;
-            authBtn.textContent = typeof t === "function" ? t("nav.reconnect") : "Re-connect";
-            authBtn.className = "btn-secondary text-xs px-2.5 sm:px-3 py-1.5 whitespace-nowrap";
+            if (authBtn) {
+                authBtn.textContent = typeof t === "function" ? t("nav.reconnect") : "Re-connect";
+                authBtn.className = "btn-secondary text-xs px-2.5 sm:px-3 py-1.5 whitespace-nowrap";
+            }
 
             if (accountCard) {
                 accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> ${typeof t === "function" ? t("status.account") : "Active Session"}`;
@@ -109,8 +111,10 @@ async function updateSystemStatus() {
         } else {
             indicatorDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
             statusText.textContent = typeof t === "function" ? t("nav.disconnected") : "Disconnected";
-            authBtn.textContent = typeof t === "function" ? t("nav.connect") : "Connect";
-            authBtn.className = "btn-primary text-xs px-2.5 sm:px-3 py-1.5 whitespace-nowrap";
+            if (authBtn) {
+                authBtn.textContent = typeof t === "function" ? t("nav.connect") : "Connect";
+                authBtn.className = "btn-primary text-xs px-2.5 sm:px-3 py-1.5 whitespace-nowrap";
+            }
 
             if (accountCard) {
                 accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> ${typeof t === "function" ? t("nav.disconnected") : "Logged Out"}`;
@@ -271,9 +275,15 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Header Auth Button
-    document.getElementById("btn-header-auth").addEventListener("click", openConnectModal);
-    document.getElementById("btn-close-modal").addEventListener("click", closeConnectModal);
+    // Header Auth Button (if present)
+    const headerAuthBtn = document.getElementById("btn-header-auth");
+    if (headerAuthBtn) {
+        headerAuthBtn.addEventListener("click", openConnectModal);
+    }
+    const closeModalBtn = document.getElementById("btn-close-modal");
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener("click", closeConnectModal);
+    }
 
     // Settings Form
     const settingsForm = document.getElementById("settings-form");

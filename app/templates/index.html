@@ -4,33 +4,6 @@
 <div class="space-y-6">
 
     <!-- ========================================================================= -->
-    <!-- QUICK MODE SWITCHER: High-Contrast Responsive Segmented Switch -->
-    <!-- ========================================================================= -->
-    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2 sm:p-2.5 rounded-2xl shadow-md">
-        <!-- Segmented Mode Toggle Buttons (Full-width on mobile) -->
-        <div class="grid grid-cols-2 sm:flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 flex-1 sm:flex-initial">
-            <button id="quick-toggle-player" onclick="switchTab('player')" class="quick-mode-btn active flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm">
-                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span data-i18n="quick.live_tv">📺 Živé webové vysílání</span>
-            </button>
-            <button id="quick-toggle-links" onclick="switchTab('links')" class="quick-mode-btn flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
-                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                <span data-i18n="quick.copy_links">🔗 Odkazy na M3U a EPG</span>
-            </button>
-        </div>
-
-        <!-- Direct Quick Copy Pills (Responsive grid on mobile) -->
-        <div class="grid grid-cols-2 sm:flex items-center gap-2">
-            <button class="btn-copy btn-secondary text-xs py-2 sm:py-1.5 px-3 flex items-center justify-center gap-1.5 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u">
-                <span data-i18n="quick.copy_m3u">📋 Kopírovat M3U</span>
-            </button>
-            <button class="btn-copy btn-secondary text-xs py-2 sm:py-1.5 px-3 flex items-center justify-center gap-1.5 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml">
-                <span data-i18n="quick.copy_epg">📅 Kopírovat EPG</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- ========================================================================= -->
     <!-- TAB 1: LIVE TV WEB PLAYER -->
     <!-- ========================================================================= -->
     <div id="tab-player" class="tab-content">
@@ -42,6 +15,12 @@
                 <div class="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl group flex items-center justify-center">
                     <video id="tv-player" class="w-full h-full object-contain" controls autoplay playsinline></video>
 
+                    <!-- Floating Unmute Button (Shown if browser blocks autoplay with sound) -->
+                    <button id="btn-unmute-overlay" class="absolute top-4 right-4 bg-slate-900/95 hover:bg-slate-800 text-amber-300 border border-amber-500/50 text-xs font-semibold px-3 py-1.5 rounded-xl shadow-xl transition-all hidden items-center gap-1.5 z-20">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                        <span data-i18n="player.unmute">Zapnout zvuk</span>
+                    </button>
+
                     <!-- Overlay when no stream loaded or error -->
                     <div id="player-placeholder" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center text-center p-6 transition-opacity">
                         <div class="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 mb-4 shadow-xl">
@@ -52,7 +31,7 @@
                     </div>
 
                     <!-- Loading Indicator -->
-                    <div id="player-loading" class="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center hidden pointer-events-none">
+                    <div id="player-loading" class="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center hidden pointer-events-none z-10">
                         <div class="flex flex-col items-center gap-2">
                             <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-cyan-500 border-t-transparent"></div>
                             <span class="text-xs text-white/90 font-medium" data-i18n="player.buffering">Načítám stream...</span>
@@ -71,18 +50,18 @@
                     </button>
                 </div>
 
-                <!-- Stream Controls & Quality Selector Toolbar (Standardized h-9 and baseline aligned) -->
+                <!-- Stream Controls & Quality Selector Toolbar (Standardized h-9 and responsive) -->
                 <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-3">
                     <div class="flex items-center gap-3">
                         <div class="flex flex-col w-full sm:w-auto">
                             <label for="player-quality-select" class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block" data-i18n="player.quality_label">Kvalita a kodek streamu</label>
                             <div class="flex items-center gap-2">
                                 <select id="player-quality-select" class="h-9 bg-slate-950 border border-slate-700 text-xs text-cyan-400 font-medium rounded-xl px-3 py-1.5 focus:outline-none focus:border-cyan-500 flex-1 sm:flex-initial">
-                                    <option value="auto" data-i18n="player.quality_auto">Auto (Adaptivní kvalita)</option>
+                                    <option value="1080p" selected>1080p (Full HD)</option>
                                     <option value="best" data-i18n="player.quality_best">Nejvyšší datový tok (Vynutit 4K/FHD)</option>
-                                    <option value="1080p">1080p (Full HD)</option>
                                     <option value="720p">720p (HD)</option>
                                     <option value="360p">360p (Úsporný režim)</option>
+                                    <option value="auto" data-i18n="player.quality_auto">Auto (Adaptivní kvalita)</option>
                                 </select>
                                 <span id="player-codec-badge" class="h-9 flex items-center text-[11px] font-mono px-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700/80 whitespace-nowrap">
                                     AVC / AAC
@@ -91,17 +70,17 @@
                         </div>
                     </div>
 
-                    <div class="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
-                        <button id="btn-toggle-catchup" class="h-9 btn-secondary text-xs px-3 rounded-xl hidden flex items-center justify-center gap-1.5" data-i18n-title="player.catchup_btn">
-                            <svg class="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            <span data-i18n="player.catchup_btn">Archiv pořadů</span>
+                    <div class="flex flex-row items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+                        <button id="btn-toggle-catchup" class="h-9 flex-1 sm:flex-initial btn-secondary text-xs px-2 sm:px-3 rounded-xl hidden items-center justify-center gap-1 whitespace-nowrap" data-i18n-title="player.catchup_btn">
+                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span data-i18n="player.catchup_btn">Archiv</span>
                         </button>
-                        <button id="btn-reload-stream" class="h-9 btn-secondary text-xs px-3 rounded-xl flex items-center justify-center gap-1.5" data-i18n-title="player.reload_btn">
-                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        <button id="btn-reload-stream" class="h-9 flex-1 sm:flex-initial btn-secondary text-xs px-2 sm:px-3 rounded-xl flex items-center justify-center gap-1 whitespace-nowrap" data-i18n-title="player.reload_btn">
+                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             <span data-i18n="player.reload_btn">Obnovit</span>
                         </button>
-                        <button id="btn-fullscreen-player" class="h-9 btn-secondary text-xs px-3 rounded-xl flex items-center justify-center gap-1.5" data-i18n-title="player.fullscreen_btn">
-                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                        <button id="btn-fullscreen-player" class="h-9 flex-1 sm:flex-initial btn-secondary text-xs px-2 sm:px-3 rounded-xl flex items-center justify-center gap-1 whitespace-nowrap" data-i18n-title="player.fullscreen_btn">
+                            <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
                             <span data-i18n="player.fullscreen_btn">Celá obrazovka</span>
                         </button>
                     </div>
@@ -178,8 +157,21 @@
 
             <!-- Channels Sidebar (4 cols on lg) -->
             <div class="lg:col-span-4 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl h-[550px] lg:h-[750px] overflow-hidden shadow-xl">
-                <!-- Search & Filters Header -->
+                <!-- Search, Quick Copy & Filters Header -->
                 <div class="p-3 sm:p-4 border-b border-slate-800 bg-slate-900/80 space-y-2.5">
+                    <!-- Compact Quick Copy Pills for M3U and EPG -->
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Rychlé odkazy</span>
+                        <div class="flex items-center gap-1.5">
+                            <button class="btn-copy btn-secondary text-[11px] py-1 px-2.5 rounded-lg flex items-center gap-1" data-copy-url="{{ base_url }}/playlist.m3u" title="Kopírovat M3U playlist">
+                                <span>📋 M3U</span>
+                            </button>
+                            <button class="btn-copy btn-secondary text-[11px] py-1 px-2.5 rounded-lg flex items-center gap-1" data-copy-url="{{ base_url }}/epg.xml" title="Kopírovat EPG průvodce">
+                                <span>📅 EPG</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="relative">
                         <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <input id="channel-search-input" type="text" placeholder="Hledat kanál..." data-i18n-placeholder="player.search_placeholder" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
@@ -624,10 +616,10 @@
                 <div>
                     <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.quality_label">Výchozí kvalita streamů v playlistu</label>
                     <select id="setting-default-quality" class="input-form">
-                        <option value="auto" {% if default_quality == 'auto' %}selected{% endif %}>Auto (Adaptivní kvalita)</option>
+                        <option value="1080p" {% if default_quality == '1080p' %}selected{% endif %}>1080p (Full HD - Doporučeno)</option>
                         <option value="best" {% if default_quality == 'best' %}selected{% endif %}>Nejvyšší dostupná kvalita (Vynutit 4K/FHD)</option>
-                        <option value="1080p" {% if default_quality == '1080p' %}selected{% endif %}>1080p (Full HD)</option>
                         <option value="720p" {% if default_quality == '720p' %}selected{% endif %}>720p (HD)</option>
+                        <option value="auto" {% if default_quality == 'auto' %}selected{% endif %}>Auto (Adaptivní kvalita)</option>
                     </select>
                 </div>
 
