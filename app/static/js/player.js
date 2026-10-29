@@ -6,9 +6,12 @@
 let hlsInstance = null;
 let currentChannel = null;
 let allChannels = [];
+let allCategories = [];
 let activeCategory = "all";
 let currentVariants = [];
 let currentReplayProgram = null;
+let lastDayKeys = [];
+let lastTimestampsMap = {};
 
 // DOM References
 const videoEl = document.getElementById("tv-player");
@@ -66,10 +69,12 @@ async function loadChannels() {
     try {
         const res = await fetch("/api/channels");
         if (res.status === 401) {
+            const notConnMsg = typeof t === "function" ? (t("player.not_connected") || "Relace Sweet.tv není připojena.") : "Relace Sweet.tv není připojena.";
+            const connBtnText = typeof t === "function" ? (t("player.connect_account") || "Připojit účet") : "Připojit účet";
             channelsListEl.innerHTML = `
                 <div class="text-center py-12 px-4 space-y-3">
-                    <p class="text-xs text-amber-400 font-medium">Sweet.tv session not connected.</p>
-                    <button onclick="openConnectModal()" class="btn-primary text-xs py-2 px-4">Connect Account</button>
+                    <p class="text-xs text-amber-400 font-medium">${notConnMsg}</p>
+                    <button onclick="openConnectModal()" class="btn-primary text-xs py-2 px-4">${connBtnText}</button>
                 </div>
             `;
             return;
@@ -77,9 +82,10 @@ async function loadChannels() {
 
         const data = await res.json();
         allChannels = data.channels || [];
+        allCategories = data.categories || [];
 
         // Render Category Pills
-        renderCategories(data.categories || []);
+        renderCategories(allCategories);
 
         // Render Channels
         renderChannels();
@@ -90,9 +96,10 @@ async function loadChannels() {
         }
     } catch (err) {
         console.error("Failed to load channels:", err);
+        const loadFailMsg = typeof t === "function" ? (t("player.load_failed") || "Nepodařilo se načíst seznam stanic ze serveru.") : "Nepodařilo se načíst seznam stanic ze serveru.";
         channelsListEl.innerHTML = `
             <div class="text-center py-12 text-xs text-red-400">
-                Failed to load channel list from server.
+                ${loadFailMsg}
             </div>
         `;
     }
@@ -101,9 +108,11 @@ async function loadChannels() {
 // Render Categories
 function renderCategories(categories) {
     if (!categoryPillsEl) return;
+    if (categories) allCategories = categories;
 
-    let html = `<button class="cat-pill ${activeCategory === 'all' ? 'active' : ''}" data-cat="all">All</button>`;
-    categories.forEach(cat => {
+    const allLabel = typeof t === "function" ? (t("category.all") || "Všechny") : "Všechny";
+    let html = `<button class="cat-pill ${activeCategory === 'all' ? 'active' : ''}" data-cat="all">${allLabel}</button>`;
+    (categories || []).forEach(cat => {
         if (cat.id !== 1000) {
             html += `<button class="cat-pill ${activeCategory === cat.caption ? 'active' : ''}" data-cat="${cat.caption}">${cat.caption}</button>`;
         }
@@ -138,17 +147,20 @@ function renderChannels() {
     });
 
     if (filtered.length === 0) {
+        const noMatchMsg = typeof t === "function" ? (t("player.no_matches") || "Nebyly nalezeny žádné stanice odpovídající") : "Nebyly nalezeny žádné stanice odpovídající";
         channelsListEl.innerHTML = `
             <div class="text-center py-12 text-xs text-slate-500">
-                No channels found matching "${searchTerm}".
+                ${noMatchMsg} "${searchTerm}".
             </div>
         `;
         return;
     }
 
+    const fallbackProg = typeof t === "function" ? (t("player.live_broadcast") || "Živé vysílání") : "Živé vysílání";
+
     channelsListEl.innerHTML = filtered.map(ch => {
         const isCurrent = currentChannel && currentChannel.id === ch.id;
-        const progTitle = ch.current_programme ? ch.current_programme.title : "Live Broadcast";
+        const progTitle = ch.current_programme ? ch.current_programme.title : fallbackProg;
         const progress = ch.current_programme ? ch.current_programme.progress : 0;
         const logo = ch.icon || "https://staticeu.sweet.tv/images/v2/icons/categories/1000.png";
 
@@ -255,8 +267,8 @@ async function selectChannel(channel) {
             if (progTimesEl) progTimesEl.textContent = `${formatTimeHourMin(cp.start)} - ${formatTimeHourMin(cp.stop)}`;
             if (progProgressEl) progProgressEl.style.width = `${cp.progress}%`;
         } else {
-            progTitleEl.textContent = "Live Broadcast";
-            if (progTimesEl) progTimesEl.textContent = "Live";
+            progTitleEl.textContent = typeof t === "function" ? (t("player.live_broadcast") || "Živé vysílání") : "Živé vysílání";
+            if (progTimesEl) progTimesEl.textContent = typeof t === "function" ? (t("player.live") || "ŽIVĚ") : "ŽIVĚ";
             if (progProgressEl) progProgressEl.style.width = "100%";
         }
     }
@@ -296,9 +308,11 @@ async function fetchStreamInfo(channelId, epgId = null) {
 function updateQualitySelectOptions(variants) {
     if (!qualitySelect) return;
     const currentVal = qualitySelect.value;
+    const autoLabel = typeof t === "function" ? (t("player.quality_auto") || "Auto (Adaptivní kvalita)") : "Auto (Adaptivní kvalita)";
+    const bestLabel = typeof t === "function" ? (t("player.quality_best") || "Nejvyšší datový tok (Vynutit 4K/FHD)") : "Nejvyšší datový tok (Vynutit 4K/FHD)";
     let optionsHtml = `
-        <option value="auto">Auto (Adaptive Multi-Bitrate)</option>
-        <option value="best">Highest Available Bitrate (Force 4K/FHD)</option>
+        <option value="auto">${autoLabel}</option>
+        <option value="best">${bestLabel}</option>
     `;
 
     if (variants && variants.length > 0) {
@@ -315,7 +329,7 @@ function updateQualitySelectOptions(variants) {
         optionsHtml += `
             <option value="1080p">1080p (Full HD)</option>
             <option value="720p">720p (HD)</option>
-            <option value="360p">360p (Data Saver)</option>
+            <option value="360p">360p (Úsporný režim / Data Saver)</option>
         `;
     }
 
@@ -508,7 +522,7 @@ function renderCatchupDayPrograms() {
     }
 
     if (dayPrograms.length === 0) {
-        const noProgMsg = typeof t === "function" ? t("epg.no_programs_day") : "No schedule details available for this day.";
+        const noProgMsg = typeof t === "function" ? t("epg.no_programs_day") : "Pro vybraný den nebyly nalezeny žádné pořady.";
         catchupListEl.innerHTML = `
             <div class="text-center py-8 text-xs text-slate-400">
                 ${noProgMsg}
@@ -518,6 +532,9 @@ function renderCatchupDayPrograms() {
     }
 
     const isCs = typeof currentLang === "undefined" || currentLang === "cs";
+    const playText = typeof t === "function" ? (t("epg.play_recording") || (isCs ? 'Přehrát záznam' : 'Play Recording')) : (isCs ? 'Přehrát záznam' : 'Play Recording');
+    const restartText = typeof t === "function" ? (t("epg.restart_recording") || (isCs ? 'Znovu přehrát' : 'Restart')) : (isCs ? 'Znovu přehrát' : 'Restart');
+    const nowPlayingText = typeof t === "function" ? (t("player.now_playing_badge") || (isCs ? 'PRÁVĚ HRAJE' : 'NOW PLAYING')) : (isCs ? 'PRÁVĚ HRAJE' : 'NOW PLAYING');
     const itemsHtml = [];
 
     dayPrograms.forEach(prog => {
@@ -526,7 +543,7 @@ function renderCatchupDayPrograms() {
         const isCurrentlyPlayingThis = currentReplayProgram && currentReplayProgram.id === prog.id;
 
         itemsHtml.push(`
-            <div class="catchup-item flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer group ${
+            <div class="catchup-item flex items-center justify-between p-3 rounded-xl border transition cursor-pointer group ${
                 isCurrentlyPlayingThis
                     ? 'bg-cyan-950/40 border-cyan-600/80 text-cyan-300'
                     : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/80 hover:border-slate-700'
@@ -535,13 +552,13 @@ function renderCatchupDayPrograms() {
                     <div class="flex items-center gap-2 mb-1">
                         <span class="text-[11px] font-mono text-cyan-400 font-semibold">${timeRange}</span>
                         <span class="text-[10px] text-slate-500 font-mono">${durationMin} min</span>
-                        ${isCurrentlyPlayingThis ? '<span class="text-[10px] font-bold text-amber-400 animate-pulse">PRÁVĚ HRAJE</span>' : ''}
+                        ${isCurrentlyPlayingThis ? `<span class="text-[10px] font-bold text-amber-400 animate-pulse">${nowPlayingText}</span>` : ''}
                     </div>
                     <div class="text-xs font-medium text-white truncate group-hover:text-cyan-300">${prog.title}</div>
                 </div>
                 <button class="btn-secondary text-[11px] py-1.5 px-3 flex items-center gap-1.5 group-hover:border-cyan-500 flex-shrink-0">
                     <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
-                    <span>${isCurrentlyPlayingThis ? (isCs ? 'Znovu' : 'Restart') : (isCs ? 'Přehrát' : 'Play')}</span>
+                    <span>${isCurrentlyPlayingThis ? restartText : playText}</span>
                 </button>
             </div>
         `);
@@ -565,10 +582,26 @@ function renderCatchupDayPrograms() {
 async function loadCatchupSchedule(channelId) {
     if (!catchupListEl) return;
 
+    // Update Catchup Header with active channel
+    const catchupLogo = document.getElementById("catchup-channel-logo");
+    const catchupName = document.getElementById("catchup-channel-name");
+    if (currentChannel) {
+        if (catchupName) catchupName.textContent = currentChannel.name;
+        if (catchupLogo) {
+            if (currentChannel.icon) {
+                catchupLogo.src = currentChannel.icon;
+                catchupLogo.classList.remove("hidden");
+            } else {
+                catchupLogo.classList.add("hidden");
+            }
+        }
+    }
+
+    const loadingText = typeof t === "function" ? (t("player.loading_archive") || "Načítám 7denní televizní archiv...") : "Načítám 7denní televizní archiv...";
     catchupListEl.innerHTML = `
         <div class="flex items-center justify-center py-8 text-xs text-slate-400 gap-2">
             <div class="inline-block animate-spin rounded-full h-4 w-4 border-2 border-cyan-400 border-t-transparent"></div>
-            <span>Načítám 7denní televizní archiv...</span>
+            <span>${loadingText}</span>
         </div>
     `;
 
@@ -593,9 +626,10 @@ async function loadCatchupSchedule(channelId) {
 
         if (channelCatchupPrograms.length === 0) {
             if (catchupDayTabsEl) catchupDayTabsEl.innerHTML = "";
+            const noArchiveText = typeof t === "function" ? (t("player.no_archive_for_channel") || "Pro tento kanál není v archivu k dispozici žádný záznam.") : "Pro tento kanál není v archivu k dispozici žádný záznam.";
             catchupListEl.innerHTML = `
                 <div class="text-center py-6 text-xs text-slate-500">
-                    Pro tento kanál není v archivu k dispozici žádný záznam.
+                    ${noArchiveText}
                 </div>
             `;
             return;
@@ -612,6 +646,9 @@ async function loadCatchupSchedule(channelId) {
             }
         });
 
+        lastDayKeys = uniqueDayKeys;
+        lastTimestampsMap = timestampsMap;
+
         // Set default active day to the newest day
         if (!activeCatchupDateKey || !uniqueDayKeys.includes(activeCatchupDateKey)) {
             activeCatchupDateKey = uniqueDayKeys[0];
@@ -622,9 +659,10 @@ async function loadCatchupSchedule(channelId) {
 
     } catch (err) {
         console.error("Failed to load catchup schedule:", err);
+        const errorText = typeof t === "function" ? (t("player.archive_network_error") || "Chyba sítě při načítání archivu pořadů.") : "Chyba sítě při načítání archivu pořadů.";
         catchupListEl.innerHTML = `
             <div class="text-center py-6 text-xs text-red-400">
-                Chyba sítě při načítání archivu pořadů.
+                ${errorText}
             </div>
         `;
     }
@@ -727,10 +765,22 @@ document.addEventListener("DOMContentLoaded", () => {
             if (replayBanner) replayBanner.classList.add("hidden");
             playCurrentChannelStream();
             if (typeof showToast === 'function') {
-                showToast("Returned to Live TV", "info");
+                const liveToast = typeof t === "function" ? (t("player.return_live") || "Zpět na živé vysílání") : "Zpět na živé vysílání";
+                showToast(liveToast, "info");
             }
         });
     }
+
+    // Listen for language changes to update dynamic player elements
+    window.addEventListener("sweettv-language-changed", () => {
+        updateQualitySelectOptions(currentVariants);
+        if (allCategories && allCategories.length > 0) renderCategories(allCategories);
+        renderChannels();
+        if (catchupDrawer && !catchupDrawer.classList.contains("hidden")) {
+            if (lastDayKeys.length > 0) renderCatchupDayTabs(lastDayKeys, lastTimestampsMap);
+            renderCatchupDayPrograms();
+        }
+    });
 
     window.loadChannels = loadChannels;
     loadChannels();

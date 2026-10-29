@@ -88,6 +88,10 @@ async function updateSystemStatus() {
         const authBtn = document.getElementById("btn-header-auth");
         const accountCard = document.getElementById("status-card-account");
         const channelsCard = document.getElementById("status-card-channels");
+        const accountCardStatus = document.getElementById("account-card-status");
+        const accountCardChannels = document.getElementById("account-card-channels");
+        const accountDisplayMac = document.getElementById("account-display-mac");
+        const accountDisplayUuid = document.getElementById("account-display-uuid");
 
         if (data.logged) {
             indicatorDot.className = "w-2 h-2 rounded-full bg-emerald-400";
@@ -99,6 +103,9 @@ async function updateSystemStatus() {
             if (accountCard) {
                 accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> ${typeof t === "function" ? t("status.account") : "Active Session"}`;
             }
+            if (accountCardStatus) {
+                accountCardStatus.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> ${typeof t === "function" ? (t("account.active_session") || "Aktivní relace Sweet.tv") : "Active Session"}`;
+            }
         } else {
             indicatorDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
             statusText.textContent = typeof t === "function" ? t("nav.disconnected") : "Disconnected";
@@ -108,17 +115,29 @@ async function updateSystemStatus() {
             if (accountCard) {
                 accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> ${typeof t === "function" ? t("nav.disconnected") : "Logged Out"}`;
             }
+            if (accountCardStatus) {
+                accountCardStatus.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> ${typeof t === "function" ? (t("account.no_session") || "Nepřipojeno") : "Not Connected"}`;
+            }
         }
 
         if (channelsCard && data.total_channels > 0) {
             channelsCard.textContent = `${data.total_channels}`;
         }
+        if (accountCardChannels && data.total_channels > 0) {
+            accountCardChannels.textContent = `${data.total_channels}`;
+        }
 
         if (document.getElementById("display-virtual-mac") && data.mac) {
             document.getElementById("display-virtual-mac").textContent = data.mac;
         }
+        if (accountDisplayMac && data.mac) {
+            accountDisplayMac.textContent = data.mac;
+        }
         if (document.getElementById("display-virtual-uuid") && data.uuid) {
             document.getElementById("display-virtual-uuid").textContent = data.uuid;
+        }
+        if (accountDisplayUuid && data.uuid) {
+            accountDisplayUuid.textContent = data.uuid;
         }
 
         tokenRemaining = data.token_expires_in_seconds || 0;
@@ -132,8 +151,13 @@ setInterval(() => {
     if (tokenRemaining > 0) {
         tokenRemaining--;
         const timerEl = document.getElementById("status-card-token-timer");
+        const accountTimerEl = document.getElementById("account-card-token-timer");
+        const formatted = formatTime(tokenRemaining);
         if (timerEl) {
-            timerEl.textContent = formatTime(tokenRemaining);
+            timerEl.textContent = formatted;
+        }
+        if (accountTimerEl) {
+            accountTimerEl.textContent = formatted;
         }
     }
 }, 1000);
@@ -226,7 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Check URL hash for direct tab linking
     if (window.location.hash) {
         const tab = window.location.hash.replace("#", "");
-        if (["player", "links", "status", "settings", "guides"].includes(tab)) {
+        if (["player", "links", "account", "status", "settings", "guides"].includes(tab)) {
             switchTab(tab);
         }
     }
@@ -331,36 +355,62 @@ document.addEventListener("DOMContentLoaded", () => {
     if (statusDisconnectBtn) {
         statusDisconnectBtn.addEventListener("click", handleAccountDisconnect);
     }
+    const accountDisconnectBtn = document.getElementById("btn-account-disconnect");
+    if (accountDisconnectBtn) {
+        accountDisconnectBtn.addEventListener("click", handleAccountDisconnect);
+    }
 
     // Reset Device Hardware Identity (New UUID & MAC)
+    async function handleDeviceReset(btnElement) {
+        const confirmMsg = typeof t === "function" ? t("status.reset_device_confirm") : "Are you sure you want to reset device identity?";
+        if (confirm(confirmMsg)) {
+            if (btnElement) btnElement.disabled = true;
+            try {
+                const res = await fetch("/api/auth/reset-device", { method: "POST" });
+                const data = await res.json();
+                if (data.status === "OK") {
+                    showToast(typeof t === "function" ? t("msg.device_reset") : "Device identity reset successfully.", "success");
+                    if (document.getElementById("display-virtual-mac")) {
+                        document.getElementById("display-virtual-mac").textContent = data.mac;
+                    }
+                    if (document.getElementById("account-display-mac")) {
+                        document.getElementById("account-display-mac").textContent = data.mac;
+                    }
+                    if (document.getElementById("display-virtual-uuid")) {
+                        document.getElementById("display-virtual-uuid").textContent = data.uuid;
+                    }
+                    if (document.getElementById("account-display-uuid")) {
+                        document.getElementById("account-display-uuid").textContent = data.uuid;
+                    }
+                    updateSystemStatus();
+                    openConnectModal();
+                }
+            } catch (e) {
+                showToast("Error resetting device identity.", "error");
+            } finally {
+                if (btnElement) btnElement.disabled = false;
+            }
+        }
+    }
+
     const resetDeviceBtn = document.getElementById("btn-status-reset-device");
     if (resetDeviceBtn) {
-        resetDeviceBtn.addEventListener("click", async () => {
-            const confirmMsg = typeof t === "function" ? t("status.reset_device_confirm") : "Are you sure you want to reset device identity?";
-            if (confirm(confirmMsg)) {
-                resetDeviceBtn.disabled = true;
-                try {
-                    const res = await fetch("/api/auth/reset-device", { method: "POST" });
-                    const data = await res.json();
-                    if (data.status === "OK") {
-                        showToast(typeof t === "function" ? t("msg.device_reset") : "Device identity reset successfully.", "success");
-                        if (document.getElementById("display-virtual-mac")) {
-                            document.getElementById("display-virtual-mac").textContent = data.mac;
-                        }
-                        if (document.getElementById("display-virtual-uuid")) {
-                            document.getElementById("display-virtual-uuid").textContent = data.uuid;
-                        }
-                        updateSystemStatus();
-                        openConnectModal();
-                    }
-                } catch (e) {
-                    showToast("Error resetting device identity.", "error");
-                } finally {
-                    resetDeviceBtn.disabled = false;
-                }
-            }
-        });
+        resetDeviceBtn.addEventListener("click", () => handleDeviceReset(resetDeviceBtn));
     }
+    const accountResetBtn = document.getElementById("btn-account-reset-device");
+    if (accountResetBtn) {
+        accountResetBtn.addEventListener("click", () => handleDeviceReset(accountResetBtn));
+    }
+
+    const accountPairBtn = document.getElementById("btn-account-pair");
+    if (accountPairBtn) {
+        accountPairBtn.addEventListener("click", openConnectModal);
+    }
+
+    // Listen for language changes to update live status indicators
+    window.addEventListener("sweettv-language-changed", () => {
+        updateSystemStatus();
+    });
 
     // Initial Status Check & periodic poll
     updateSystemStatus();

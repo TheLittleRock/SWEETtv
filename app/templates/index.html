@@ -71,20 +71,20 @@
                     </button>
                 </div>
 
-                <!-- Stream Controls & Quality Selector Toolbar (Responsive) -->
-                <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <!-- Stream Controls & Quality Selector Toolbar (Standardized h-9 and baseline aligned) -->
+                <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-3">
                     <div class="flex items-center gap-3">
                         <div class="flex flex-col w-full sm:w-auto">
-                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider" data-i18n="player.quality_label">Kvalita a kodek streamu</span>
-                            <div class="flex items-center gap-2 mt-1">
-                                <select id="player-quality-select" class="bg-slate-950 border border-slate-700 text-xs text-cyan-400 font-medium rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 flex-1 sm:flex-initial">
+                            <label for="player-quality-select" class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block" data-i18n="player.quality_label">Kvalita a kodek streamu</label>
+                            <div class="flex items-center gap-2">
+                                <select id="player-quality-select" class="h-9 bg-slate-950 border border-slate-700 text-xs text-cyan-400 font-medium rounded-xl px-3 py-1.5 focus:outline-none focus:border-cyan-500 flex-1 sm:flex-initial">
                                     <option value="auto" data-i18n="player.quality_auto">Auto (Adaptivní kvalita)</option>
                                     <option value="best" data-i18n="player.quality_best">Nejvyšší datový tok (Vynutit 4K/FHD)</option>
                                     <option value="1080p">1080p (Full HD)</option>
                                     <option value="720p">720p (HD)</option>
                                     <option value="360p">360p (Úsporný režim)</option>
                                 </select>
-                                <span id="player-codec-badge" class="text-[11px] font-mono px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700/80 whitespace-nowrap">
+                                <span id="player-codec-badge" class="h-9 flex items-center text-[11px] font-mono px-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700/80 whitespace-nowrap">
                                     AVC / AAC
                                 </span>
                             </div>
@@ -92,34 +92,43 @@
                     </div>
 
                     <div class="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
-                        <button id="btn-toggle-catchup" class="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 hidden flex items-center" data-i18n-title="player.catchup_btn">
-                            <svg class="w-4 h-4 mr-1 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <button id="btn-toggle-catchup" class="h-9 btn-secondary text-xs px-3 rounded-xl hidden flex items-center justify-center gap-1.5" data-i18n-title="player.catchup_btn">
+                            <svg class="w-4 h-4 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                             <span data-i18n="player.catchup_btn">Archiv pořadů</span>
                         </button>
-                        <button id="btn-reload-stream" class="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 flex items-center" data-i18n-title="player.reload_btn">
-                            <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        <button id="btn-reload-stream" class="h-9 btn-secondary text-xs px-3 rounded-xl flex items-center justify-center gap-1.5" data-i18n-title="player.reload_btn">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             <span data-i18n="player.reload_btn">Obnovit</span>
                         </button>
-                        <button id="btn-fullscreen-player" class="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 flex items-center" data-i18n-title="player.fullscreen_btn">
-                            <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                        <button id="btn-fullscreen-player" class="h-9 btn-secondary text-xs px-3 rounded-xl flex items-center justify-center gap-1.5" data-i18n-title="player.fullscreen_btn">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
                             <span data-i18n="player.fullscreen_btn">Celá obrazovka</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- 7-Day Catchup Replay Drawer with Modern Day-Pill Tabs & Search Filter -->
+                <!-- 7-Day Catchup Replay Drawer with Channel Banner, Modern Day Pills & In-Day Search -->
                 <div id="catchup-drawer" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 animate-fade-in shadow-xl">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-white uppercase tracking-wider" data-i18n="player.catchup_schedule">⏪ 7denní televizní archiv (Catchup)</span>
-                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full" data-i18n="player.archive_available">Archiv dostupný</span>
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <img id="catchup-channel-logo" src="" alt="" class="w-7 h-7 rounded-lg bg-slate-950 p-1 object-contain border border-slate-800 hidden flex-shrink-0">
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-white uppercase tracking-wider" data-i18n="player.catchup_schedule">⏪ 7denní televizní archiv (Catchup)</span>
+                                    <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full" data-i18n="player.archive_available">Archiv dostupný</span>
+                                </div>
+                                <div class="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5 truncate">
+                                    <span data-i18n="epg.channel_archive">Archiv stanice:</span>
+                                    <strong id="catchup-channel-name" class="text-cyan-400 font-semibold truncate">--</strong>
+                                </div>
+                            </div>
                         </div>
-                        <button id="btn-close-catchup" class="text-slate-400 hover:text-white text-xs px-2 py-1" data-i18n="player.close">Zavřít &times;</button>
+                        <button id="btn-close-catchup" class="text-slate-400 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors" data-i18n="player.close">Zavřít &times;</button>
                     </div>
 
                     <!-- Day Selector Tabs & Live Filter -->
                     <div class="space-y-2.5">
-                        <div id="catchup-day-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                        <div id="catchup-day-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-thin">
                             <!-- Dynamically populated via player.js -->
                         </div>
                         <div class="relative">
@@ -129,7 +138,7 @@
                     </div>
 
                     <!-- Programs List for Active Day -->
-                    <div id="catchup-programs-list" class="max-h-[30rem] overflow-y-auto space-y-2 pr-1">
+                    <div id="catchup-programs-list" class="max-h-[32rem] overflow-y-auto space-y-2 pr-1">
                         <!-- Populated via JS -->
                     </div>
                 </div>
@@ -383,7 +392,122 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- TAB 3: STATUS & METRICS -->
+    <!-- TAB 3: SWEET.TV ACCOUNT & PAIRING MANAGER -->
+    <!-- ========================================================================= -->
+    <div id="tab-account" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4">
+            <h2 class="text-xl font-bold text-white" data-i18n="account.title">Správa účtu Sweet.tv a párování</h2>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="account.subtitle">Správa přihlášené relace, virtuální hardware identita zařízení a párovací nástroje.</p>
+        </div>
+
+        <!-- Account Overview Cards Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium" data-i18n="account.session_card">Stav přihlášení</span>
+                <div id="account-card-status" class="text-lg font-bold text-white mt-1 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> Ověřuji...
+                </div>
+                <span id="account-card-country" class="text-xs text-cyan-400 mt-2 block">Region: {{ country_code|upper }}</span>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium" data-i18n="account.token_card">Platnost tokenu</span>
+                <div id="account-card-token-timer" class="text-lg font-bold text-amber-400 font-mono mt-1">
+                    --:--:--
+                </div>
+                <span class="text-xs text-slate-400 mt-2 block">Automatická obnova při 85 %</span>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium" data-i18n="status.channels">Celkem stanic</span>
+                <div id="account-card-channels" class="text-lg font-bold text-white mt-1">
+                    --
+                </div>
+                <span class="text-xs text-slate-400 mt-2 block">Dostupné televizní programy</span>
+            </div>
+
+            <div class="card p-5">
+                <span class="text-xs text-slate-400 font-medium">Verze serveru</span>
+                <div class="text-lg font-bold text-cyan-400 font-mono mt-1">
+                    v{{ app_version }}
+                </div>
+                <span class="text-xs text-slate-400 mt-2 block">Sweet.tv IPTV Proxy Server</span>
+            </div>
+        </div>
+
+        <!-- Emulated Hardware Identity -->
+        <div class="card p-5 sm:p-6 space-y-4">
+            <div class="border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-bold text-white" data-i18n="account.hardware_card">Virtuální identita zařízení</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Tato unikátní virtuální identita registruje server u Sweet.tv jako samostatné Smart TV zařízení.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
+                    <div>
+                        <span class="text-slate-400 block mb-0.5" data-i18n="status.mac">Virtuální MAC adresa:</span>
+                        <span id="account-display-mac" class="text-cyan-400 font-bold select-all">{{ mac }}</span>
+                    </div>
+                    <button type="button" class="btn-copy btn-secondary text-[11px] py-1 px-2.5 whitespace-nowrap" data-copy-url="{{ mac }}" data-i18n="links.copy_btn">Kopírovat</button>
+                </div>
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <span class="text-slate-400 block mb-0.5" data-i18n="status.uuid">UUID zařízení:</span>
+                        <span id="account-display-uuid" class="text-cyan-400 font-bold truncate block select-all">{{ uuid }}</span>
+                    </div>
+                    <button type="button" class="btn-copy btn-secondary text-[11px] py-1 px-2.5 whitespace-nowrap flex-shrink-0" data-copy-url="{{ uuid }}" data-i18n="links.copy_btn">Kopírovat</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Account Controls & Device Actions -->
+        <div class="card p-5 sm:p-6 space-y-5">
+            <div class="border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-bold text-white" data-i18n="account.actions_card">Ovládání účtu a zařízení</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Možnosti pro připojení, uvolnění aktivního slotu na účtu a reset zařízení.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Action 1: Pair / Connect -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <span class="text-xs font-bold text-white block mb-1">1. Spárovat / Připojit účet</span>
+                        <p class="text-[11px] text-slate-400" data-i18n="account.pair_desc">Připojte se pomocí 4místného kódu nebo QR kódu na Sweet.tv.</p>
+                    </div>
+                    <button type="button" id="btn-account-pair" class="btn-primary w-full text-xs py-2 flex items-center justify-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                        <span data-i18n="account.pair_btn">Zobrazit párovací kód</span>
+                    </button>
+                </div>
+
+                <!-- Action 2: Disconnect Session -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <span class="text-xs font-bold text-white block mb-1">2. Odpojit relaci účtu</span>
+                        <p class="text-[11px] text-slate-400">Odpojí server od Sweet.tv a smaže uložený autentizační token ze serveru.</p>
+                    </div>
+                    <button type="button" id="btn-account-disconnect" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3 py-2 rounded-xl transition-colors w-full flex items-center justify-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                        <span data-i18n="account.disconnect_btn">Odpojit účet Sweet.tv</span>
+                    </button>
+                </div>
+
+                <!-- Action 3: Reset Identity (New Hardware IDs) -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
+                    <div>
+                        <span class="text-xs font-bold text-white block mb-1">3. Uvolnit slot (Nová identita)</span>
+                        <p class="text-[11px] text-slate-400">Vygeneruje nové náhodné MAC a UUID pro uvolnění obsazeného slotu zařízení na Sweet.tv.</p>
+                    </div>
+                    <button type="button" id="btn-account-reset-device" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold px-3 py-2 rounded-xl transition-colors w-full flex items-center justify-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        <span data-i18n="account.reset_device_btn">Resetovat ID zařízení</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: STATUS & METRICS -->
     <!-- ========================================================================= -->
     <div id="tab-status" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
@@ -561,73 +685,131 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- TAB 5: SETUP GUIDES & NPM DOCUMENTATION -->
+    <!-- TAB 6: SETUP GUIDES & INTEGRATION -->
     <!-- ========================================================================= -->
     <div id="tab-guides" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
-            <h2 class="text-xl font-bold text-white">Návody k nastavení a dokumentace</h2>
-            <p class="text-xs text-slate-400 mt-1">Pokyny pro Nginx Proxy Manager (NPM), Kodi, TiviMate, VLC a Portainer.</p>
+            <h2 class="text-xl font-bold text-white" data-i18n="guides.title">Návody k nastavení pro IPTV aplikace</h2>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="guides.subtitle">Podrobné návody s 1-klik odkazy pro Smart TV, Apple TV, Android TV, Kodi, VLC a set-top boxy.</p>
         </div>
 
-        <div class="space-y-6 max-w-4xl">
+        <div class="space-y-6 max-w-5xl">
 
-            <!-- Guide 1: Nginx Proxy Manager (NPM) -->
-            <div class="card p-5 sm:p-6">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">
-                        NPM
+            <!-- Guide 1: Smart TV (Samsung Tizen & LG webOS) -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">Zpřístupnění přes Nginx Proxy Manager (NPM) a veřejnou IP</h3>
-                        <p class="text-xs text-slate-400">Bezpečný přístup k M3U a EPG odkudkoliv z internetu.</p>
+                        <h3 class="text-base font-bold text-white" data-i18n="guides.smart_tv_title">Smart TV (Samsung Tizen, LG webOS)</h3>
+                        <p class="text-xs text-slate-400">IBO Player, Smart IPTV (SIPTV), Nanomid Player, DuplexPlay nebo SS IPTV.</p>
                     </div>
                 </div>
 
-                <div class="space-y-4 text-xs text-slate-300">
-                    <p>
-                        S veřejnou IP adresou a Nginx Proxy Managerem (NPM) můžete serveru přiřadit doménu (např. <code class="code-inline">tv.vasedomena.cz</code>) s bezplatným SSL certifikátem Let's Encrypt.
-                    </p>
-
-                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Krok 1: Přesměrování portů (Port Forwarding)</span>
-                        <p class="text-slate-400">Na svém domácím routeru přesměrujte vnější porty <code class="code-inline">80</code> a <code class="code-inline">443</code> na lokální IP adresu serveru, kde běží Nginx Proxy Manager.</p>
-                    </div>
-
-                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Krok 2: Přidání Proxy Hostu v NPM</span>
-                        <ul class="list-disc list-inside space-y-1 text-slate-300">
-                            <li><strong>Domain Names:</strong> <code class="code-inline">tv.vasedomena.cz</code></li>
-                            <li><strong>Scheme:</strong> <code class="code-inline">http</code></li>
-                            <li><strong>Forward Hostname / IP:</strong> Lokální IP tohoto serveru nebo název kontejneru (např. <code class="code-inline">sweettv-proxy</code> nebo <code class="code-inline">192.168.1.xxx</code>)</li>
-                            <li><strong>Forward Port:</strong> <code class="code-inline">5000</code></li>
-                            <li><strong>Povolit:</strong> <span class="text-cyan-400 font-semibold">Websockets Support</span> &bull; <span class="text-cyan-400 font-semibold">Block Common Exploits</span></li>
-                        </ul>
-                    </div>
-
-                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Krok 3: SSL Certifikát</span>
-                        <ul class="list-disc list-inside space-y-1 text-slate-300">
-                            <li>Přejděte na záložku <strong>SSL</strong> v NPM.</li>
-                            <li>Zvolte <strong>Request a new SSL Certificate</strong> (Let's Encrypt).</li>
-                            <li>Zaškrtněte <strong>Force SSL</strong> a <strong>HTTP/2 Support</strong>.</li>
-                        </ul>
-                    </div>
-
-                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Krok 4: Nastavení veřejné domény v Nastavení</span>
-                        <p class="text-slate-400">Otevřete záložku <a href="#" class="text-cyan-400 underline" onclick="switchTab('settings')">Nastavení</a> výše a vyplňte <strong>Veřejná doména</strong> na <code class="code-inline">https://tv.vasedomena.cz</code>. Odkazy na M3U a EPG budou automaticky používat tuto HTTPS doménu!</p>
-                    </div>
+                <div class="space-y-3 text-xs text-slate-300">
+                    <ol class="list-decimal list-inside space-y-2.5">
+                        <li>
+                            <strong>Nainstalujte IPTV aplikaci na TV:</strong> Otevřete obchod s aplikacemi na své televizi (Samsung Apps nebo LG Content Store) a vyhledejte např. <em>IBO Player</em> nebo <em>Smart IPTV</em>.
+                        </li>
+                        <li>
+                            <strong>Zjistěte Device ID / MAC:</strong> Po spuštění aplikace na TV se na obrazovce zobrazí MAC adresa nebo Device ID &amp; Device Key.
+                        </li>
+                        <li>
+                            <strong>Nahrajte playlist přes webový portál aplikace:</strong> Na mobilu nebo PC otevřete web portálu vaší aplikace (např. <code class="code-inline">iboplayer.com/device</code> nebo <code class="code-inline">siptv.app/mylist</code>) a zadejte své ID.
+                        </li>
+                        <li>
+                            <strong>Vložte M3U a EPG URL:</strong> Do pole pro M3U zadejte:
+                            <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat M3U</button>
+                            </div>
+                            <span class="text-slate-400 block mt-1">A do pole pro EPG zadejte:</span>
+                            <div class="mt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/epg.xml" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml" data-i18n="links.copy_epg_btn">Kopírovat EPG</button>
+                            </div>
+                        </li>
+                        <li>
+                            <strong>Restartujte aplikaci na TV:</strong> Stiskněte tlačítko Obnovit/Reload v aplikaci na TV. Načtou se všechny kanály, loga i televizní program.
+                        </li>
+                    </ol>
                 </div>
             </div>
 
-            <!-- Guide 2: Kodi Setup -->
-            <div class="card p-5 sm:p-6">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
+            <!-- Guide 2: Android TV & Google TV -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-bold flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white" data-i18n="guides.android_tv_title">Android TV &amp; Google TV (TiviMate, Sparkle TV, OTT Navigator)</h3>
+                        <p class="text-xs text-slate-400">Nejlepší zážitek s podporou 7denního archivu na Chromecast, Sony, Philips, Xiaomi TV.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs text-slate-300">
+                    <p>Pro Android TV doporučujeme aplikaci <strong class="text-white">TiviMate IPTV Player</strong> nebo <strong class="text-white">Sparkle TV</strong>:</p>
+                    <ol class="list-decimal list-inside space-y-2">
+                        <li>V TiviMate zvolte <strong>Nastavení &rarr; Playlisty &rarr; Přidat playlist</strong>.</li>
+                        <li>Zvolte <strong>M3U playlist</strong> a vložte odkaz:
+                            <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat M3U</button>
+                            </div>
+                        </li>
+                        <li>Pro televizní program (EPG) vložte:
+                            <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml.gz" data-i18n="links.copy_gzip_btn">Kopírovat EPG GZIP</button>
+                            </div>
+                        </li>
+                        <li>
+                            <strong>Aktivace archivu (Catchup):</strong> V nastavení playlistu v TiviMate přejděte na <em>Catchup</em> &rarr; nastavte na <strong>Auto</strong> nebo <strong>Xtream Codes / Flussonic</strong>. Zpětné přehrávání až 7 dní bude okamžitě aktivní!
+                        </li>
+                        <li>
+                            <em>Alternativa přes Xtream Codes:</em> Můžete zvolit i přihlášení přes Xtream Codes: Server <code class="code-inline">{{ base_url }}</code>, uživatel <code class="code-inline">{{ xtream_user }}</code>, heslo <code class="code-inline">{{ xtream_password }}</code>.
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Guide 3: Apple TV & iOS -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-slate-700/40 border border-slate-600/40 text-slate-200 flex items-center justify-center font-bold flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white" data-i18n="guides.apple_tv_title">Apple TV &amp; iOS (iPhone / iPad)</h3>
+                        <p class="text-xs text-slate-400">iSTB, IPTVX, UHF, Smarters Player Lite nebo GSE Smart IPTV.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs text-slate-300">
+                    <ol class="list-decimal list-inside space-y-2">
+                        <li>Z App Store na Apple TV nebo iPhonu nainstalujte <strong class="text-white">IPTVX</strong>, <strong class="text-white">UHF</strong> nebo <strong class="text-white">iSTB</strong>.</li>
+                        <li>Zvolte <strong>Add Playlist</strong> &rarr; <strong>M3U URL</strong>.</li>
+                        <li>Vložte URL playlistu a EPG:
+                            <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat M3U</button>
+                            </div>
+                        </li>
+                        <li>Aplikace automaticky synchronizuje seznamy a EPG přes iCloud na všech vašich zařízeních Apple!</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Guide 4: Kodi Setup -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold flex-shrink-0">
                         Kodi
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">Kodi (PVR IPTV Simple Client)</h3>
+                        <h3 class="text-base font-bold text-white" data-i18n="guides.kodi_title">Kodi (PVR IPTV Simple Client)</h3>
                         <p class="text-xs text-slate-400">Kompletní televizní program, loga, kategorie a 7denní archiv v Kodi.</p>
                     </div>
                 </div>
@@ -636,13 +818,15 @@
                     <ol class="list-decimal list-inside space-y-2">
                         <li>Nainstalujte doplněk <strong>PVR IPTV Simple Client</strong> v Kodi (Nastavení &rarr; Doplňky &rarr; Instalovat z repozitáře &rarr; Klienti PVR &rarr; PVR IPTV Simple Client).</li>
                         <li>V konfiguraci doplňku &rarr; záložka <strong>Obecné</strong>:
-                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800 select-all">
-                                URL seznamu M3U: {{ base_url }}/playlist.m3u
+                            <div class="mt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat</button>
                             </div>
                         </li>
                         <li>Přejděte na záložku <strong>EPG</strong>:
-                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800 select-all">
-                                URL XMLTV: {{ base_url }}/epg.xml.gz
+                            <div class="mt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <input type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml.gz" data-i18n="links.copy_gzip_btn">Kopírovat Gzip</button>
                             </div>
                         </li>
                         <li>Přejděte na záložku <strong>Zpětné zhlédnutí (Catchup)</strong>:
@@ -656,42 +840,88 @@
                 </div>
             </div>
 
-            <!-- Guide 3: TiviMate / OTT Navigator -->
-            <div class="card p-5 sm:p-6">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
-                        TV
+            <!-- Guide 5: PC & Mac (Desktop) -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">TiviMate a Android TV aplikace</h3>
-                        <p class="text-xs text-slate-400">Špičkový zážitek ze sledování na Google TV, FireTV a Nvidia Shield.</p>
+                        <h3 class="text-base font-bold text-white" data-i18n="guides.pc_mac_title">PC a Mac (VLC Media Player, IPTVnator, SFVIP)</h3>
+                        <p class="text-xs text-slate-400">Přímé přehrávání na Windows, macOS a Linux počítačích.</p>
                     </div>
                 </div>
 
                 <div class="space-y-3 text-xs text-slate-300">
-                    <ol class="list-decimal list-inside space-y-2">
-                        <li>V TiviMate zvolte <strong>Nastavení &rarr; Playlisty &rarr; Přidat playlist</strong>.</li>
-                        <li>Vyberte <strong>M3U playlist</strong> a zadejte: <code class="code-inline select-all">{{ base_url }}/playlist.m3u</code>.</li>
-                        <li>V sekci EPG zadejte URL průvodce: <code class="code-inline select-all">{{ base_url }}/epg.xml</code>.</li>
-                        <li>V možnostech playlistu ověřte, že je <strong>Catchup</strong> nastaven na <strong>Auto</strong> nebo <strong>Typ: Xtream Codes / Flussonic / VOD</strong>.</li>
-                    </ol>
+                    <ul class="space-y-2">
+                        <li>
+                            <strong>VLC Media Player:</strong> Stiskněte <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]">Ctrl + N</kbd> (nebo <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]">Cmd + N</kbd> na Macu) &rarr; zadejte URL <code class="code-inline select-all">{{ base_url }}/playlist.m3u</code> &rarr; Přehrát.
+                        </li>
+                        <li>
+                            <strong>IPTVnator / SFVIP Player:</strong> Bezplatné přehrávače s kompletním grafickým rozhraním, EPG televizním programem a vyhledáváním. Stačí vložit URL playlistu a EPG ze záložky <a href="#" class="text-cyan-400 underline" onclick="switchTab('links')">Playlisty</a>.
+                        </li>
+                    </ul>
                 </div>
             </div>
 
-            <!-- Guide 4: Portainer / Docker Deployment -->
-            <div class="card p-5 sm:p-6">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+            <!-- Guide 6: Nginx Proxy Manager (NPM) -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold flex-shrink-0">
+                        NPM
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white" data-i18n="guides.npm_title">Nginx Proxy Manager (NPM) a HTTPS doména</h3>
+                        <p class="text-xs text-slate-400">Bezpečný přístup k M3U a EPG odkudkoliv z internetu s bezplatným SSL certifikátem Let's Encrypt.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 text-xs text-slate-300">
+                    <p>
+                        S veřejnou IP adresou a Nginx Proxy Managerem můžete serveru přiřadit vlastní doménu (např. <code class="code-inline">tv.vasedomena.cz</code>):
+                    </p>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <span class="text-xs font-bold text-white block">Krok 1: Přesměrování portů na routeru (Port Forwarding)</span>
+                        <p class="text-slate-400">Přesměrujte vnější porty <code class="code-inline">80</code> a <code class="code-inline">443</code> na lokální IP adresu serveru s NPM.</p>
+                    </div>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <span class="text-xs font-bold text-white block">Krok 2: Přidání Proxy Hostu v NPM</span>
+                        <ul class="list-disc list-inside space-y-1 text-slate-300">
+                            <li><strong>Domain Names:</strong> <code class="code-inline">tv.vasedomena.cz</code></li>
+                            <li><strong>Scheme:</strong> <code class="code-inline">http</code></li>
+                            <li><strong>Forward Hostname / IP:</strong> Lokální IP nebo Docker název kontejneru (<code class="code-inline">sweettv-proxy</code>)</li>
+                            <li><strong>Forward Port:</strong> <code class="code-inline">5000</code></li>
+                            <li><strong>Povolit:</strong> <span class="text-cyan-400 font-semibold">Websockets Support</span> &bull; <span class="text-cyan-400 font-semibold">Block Common Exploits</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <span class="text-xs font-bold text-white block">Krok 3: SSL Certifikát Let's Encrypt</span>
+                        <p class="text-slate-400">Na záložce <strong>SSL</strong> zvolte <strong>Request a new SSL Certificate</strong> a zaškrtněte <strong>Force SSL</strong>.</p>
+                    </div>
+
+                    <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
+                        <span class="text-xs font-bold text-white block">Krok 4: Uložení veřejné domény v Nastavení</span>
+                        <p class="text-slate-400">Otevřete záložku <a href="#" class="text-cyan-400 underline" onclick="switchTab('settings')">Nastavení</a> a vyplňte <strong>Veřejná doména</strong> na <code class="code-inline">https://tv.vasedomena.cz</code>. Všechny M3U i EPG odkazy se okamžitě přepnou na vaši zabezpečenou HTTPS doménu!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guide 7: Docker Compose Deployment -->
+            <div class="card p-5 sm:p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold flex-shrink-0">
                         Docker
                     </div>
                     <div>
                         <h3 class="text-base font-bold text-white">Docker Compose &amp; Portainer Stack</h3>
-                        <p class="text-xs text-slate-400">Nasazení kontejneru jedním kliknutím s perzistentním diskem.</p>
+                        <p class="text-xs text-slate-400">Trvalý běh serveru s perzistentním diskem pro tokeny a nastavení.</p>
                     </div>
                 </div>
 
                 <div class="space-y-3 text-xs text-slate-300">
-                    <p>V Portaineru klikněte na <strong>Stacks &rarr; Add stack &rarr; Web editor</strong> a vložte:</p>
                     <pre class="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-[11px] text-cyan-300 overflow-x-auto">version: '3.8'
 
 services:

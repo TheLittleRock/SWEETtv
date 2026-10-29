@@ -9,6 +9,8 @@ const I18N = {
     // Navigation
     "nav.live_tv": "Live TV",
     "nav.playlists": "Playlists & EPG",
+    "nav.account": "Account",
+    "nav.account_short": "Account",
     "nav.status": "Status",
     "nav.settings": "Settings",
     "nav.guides": "Guides",
@@ -45,17 +47,30 @@ const I18N = {
     "player.all_categories": "All Categories",
     "player.next": "Next",
     "player.now": "NOW",
-    "player.replay": "Replay",
+    "player.replay": "Play",
     "player.live": "LIVE",
+    "player.live_broadcast": "Live Broadcast",
+    "player.now_playing_badge": "NOW PLAYING",
+    "player.not_connected": "Sweet.tv session not connected.",
+    "player.connect_account": "Connect Account",
+    "player.load_failed": "Failed to load channel list from server.",
+    "player.no_matches": "No channels found matching",
+    "player.loading_archive": "Loading 7-day TV archive...",
+    "player.no_archive_for_channel": "No catchup recordings available for this channel.",
+    "player.archive_network_error": "Network error loading catchup archive.",
     "player.no_epg_found": "No schedule details available for this day.",
 
-    // EPG Catchup Day Tabs
+    // EPG Catchup Day Tabs & Rich Cards
     "epg.today": "Today",
     "epg.yesterday": "Yesterday",
     "epg.search_placeholder": "Search programs on this day...",
     "epg.play_recording": "Play Recording",
+    "epg.restart_recording": "Restart",
     "epg.duration": "Duration",
     "epg.no_programs_day": "No programs found for selected day.",
+    "epg.programs_found": "programs found",
+    "epg.channel_archive": "Catchup Archive:",
+    "epg.no_channel_selected": "Please select a channel to view its 7-day replay archive.",
 
     // Categories
     "category.all": "All",
@@ -67,6 +82,20 @@ const I18N = {
     "category.documentary": "Documentary",
     "category.kids": "Kids",
     "category.music": "Music",
+
+    // Account Management Tab
+    "account.title": "Sweet.tv Account & Pairing Management",
+    "account.subtitle": "Manage active account session, virtual hardware identity, and pairing tokens.",
+    "account.session_card": "Account Status",
+    "account.token_card": "Token Validity",
+    "account.hardware_card": "Emulated Device Identity",
+    "account.actions_card": "Account & Device Controls",
+    "account.disconnect_btn": "Disconnect Account",
+    "account.reset_device_btn": "Reset Device Identity (New UUID/MAC)",
+    "account.pair_btn": "Pair / Connect Account",
+    "account.pair_desc": "Connect via 4-digit code or QR code on Sweet.tv.",
+    "account.active_session": "Active Sweet.tv Session",
+    "account.no_session": "Not Connected",
 
     // Links Tab
     "links.title": "Playlists, EPG & Integration URLs",
@@ -148,6 +177,17 @@ const I18N = {
     "settings.save_btn": "Save Configuration",
     "settings.refresh_btn": "Refresh Cache",
 
+    // Guides Tab
+    "guides.title": "Setup Guides for IPTV Applications",
+    "guides.subtitle": "Step-by-step instructions with 1-click URLs for Smart TVs, Apple TV, Android, Kodi, VLC and STB.",
+    "guides.smart_tv_title": "Smart TV (Samsung Tizen, LG webOS)",
+    "guides.android_tv_title": "Android TV & Google TV (TiviMate, Sparkle)",
+    "guides.apple_tv_title": "Apple TV & iOS (iPhone / iPad)",
+    "guides.kodi_title": "Kodi (PVR IPTV Simple Client)",
+    "guides.pc_mac_title": "PC & Mac (VLC, IPTVnator, SFVIP)",
+    "guides.mag_title": "Stalker / MAG Set-top Boxes",
+    "guides.npm_title": "Nginx Proxy Manager & HTTPS Domain",
+
     // Modals
     "modal.auth_title": "Connect Sweet.tv Account",
     "modal.auth_step1": "1. On your phone or computer, open:",
@@ -166,6 +206,8 @@ const I18N = {
     // Navigace
     "nav.live_tv": "Živé vysílání",
     "nav.playlists": "Playlisty a EPG",
+    "nav.account": "Správa účtu",
+    "nav.account_short": "Účet",
     "nav.status": "Stav systému",
     "nav.settings": "Nastavení",
     "nav.guides": "Návody",
@@ -204,15 +246,28 @@ const I18N = {
     "player.now": "PRÁVĚ BĚŽÍ",
     "player.replay": "Přehrát",
     "player.live": "ŽIVĚ",
+    "player.live_broadcast": "Živé vysílání",
+    "player.now_playing_badge": "PRÁVĚ HRAJE",
+    "player.not_connected": "Relace Sweet.tv není připojena.",
+    "player.connect_account": "Připojit účet",
+    "player.load_failed": "Nepodařilo se načíst seznam stanic ze serveru.",
+    "player.no_matches": "Nebyly nalezeny žádné stanice odpovídající",
+    "player.loading_archive": "Načítám 7denní televizní archiv...",
+    "player.no_archive_for_channel": "Pro tento kanál není v archivu k dispozici žádný záznam.",
+    "player.archive_network_error": "Chyba sítě při načítání archivu pořadů.",
     "player.no_epg_found": "Pro tento den nejsou k dispozici žádné pořady.",
 
-    // EPG Catchup Záložky dnů
+    // EPG Catchup Záložky dnů a bohaté karty
     "epg.today": "Dnes",
     "epg.yesterday": "Včera",
     "epg.search_placeholder": "Hledat v pořadech tohoto dne...",
     "epg.play_recording": "Přehrát záznam",
+    "epg.restart_recording": "Znovu přehrát",
     "epg.duration": "Délka",
     "epg.no_programs_day": "Pro vybraný den nebyly nalezeny žádné pořady.",
+    "epg.programs_found": "nalezených pořadů",
+    "epg.channel_archive": "Archiv pořadů stanice:",
+    "epg.no_channel_selected": "Pro zobrazení 7denního archivu vyberte stanici v seznamu vpravo.",
 
     // Kategorie
     "category.all": "Všechny",
@@ -224,6 +279,20 @@ const I18N = {
     "category.documentary": "Dokumentární",
     "category.kids": "Dětské",
     "category.music": "Hudební",
+
+    // Záložka Správa účtu
+    "account.title": "Správa účtu Sweet.tv a párování",
+    "account.subtitle": "Správa přihlášené relace, virtuální hardware identita zařízení a párovací nástroje.",
+    "account.session_card": "Stav přihlášení",
+    "account.token_card": "Platnost tokenu",
+    "account.hardware_card": "Virtuální identita zařízení",
+    "account.actions_card": "Ovládání účtu a zařízení",
+    "account.disconnect_btn": "Odpojit účet",
+    "account.reset_device_btn": "Resetovat ID zařízení (nové UUID/MAC)",
+    "account.pair_btn": "Spárovat / Připojit účet",
+    "account.pair_desc": "Připojte se pomocí 4místného kódu nebo QR kódu na Sweet.tv.",
+    "account.active_session": "Aktivní relace Sweet.tv",
+    "account.no_session": "Nepřipojeno",
 
     // Záložka Odkazy
     "links.title": "M3U playlisty, EPG a portálové odkazy",
@@ -305,6 +374,17 @@ const I18N = {
     "settings.save_btn": "Uložit nastavení",
     "settings.refresh_btn": "Obnovit mezipaměť",
 
+    // Záložka Návody
+    "guides.title": "Návody k nastavení pro IPTV aplikace",
+    "guides.subtitle": "Podrobné návody s odkazy pro Smart TV, Apple TV, Android, Kodi, VLC a set-top boxy.",
+    "guides.smart_tv_title": "Smart TV (Samsung Tizen, LG webOS)",
+    "guides.android_tv_title": "Android TV a Google TV (TiviMate, Sparkle)",
+    "guides.apple_tv_title": "Apple TV a iOS (iPhone / iPad)",
+    "guides.kodi_title": "Kodi (PVR IPTV Simple Client)",
+    "guides.pc_mac_title": "PC a Mac (VLC, IPTVnator, SFVIP)",
+    "guides.mag_title": "Stalker / MAG set-top boxy",
+    "guides.npm_title": "Nginx Proxy Manager a HTTPS doména",
+
     // Modální okna
     "modal.auth_title": "Připojení k účtu Sweet.tv",
     "modal.auth_step1": "1. Na mobilu nebo počítači otevřete:",
@@ -325,7 +405,10 @@ let currentLang = localStorage.getItem("sweettv_lang") || "cs";
 
 function t(key) {
   const dict = I18N[currentLang] || I18N.cs || I18N.en;
-  return dict[key] || (I18N.en[key] || key);
+  if (dict && dict[key]) return dict[key];
+  if (I18N.en && I18N.en[key]) return I18N.en[key];
+  if (I18N.cs && I18N.cs[key]) return I18N.cs[key];
+  return null;
 }
 
 function setLanguage(lang) {
@@ -346,11 +429,11 @@ function setLanguage(lang) {
     }
   }
 
-  // Update text of elements with data-i18n
+  // Update text of elements with data-i18n (ONLY if a translation exists)
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
     const val = t(key);
-    if (val) {
+    if (val !== null && val !== undefined && val !== "") {
       el.innerHTML = val;
     }
   });
@@ -359,7 +442,7 @@ function setLanguage(lang) {
   document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     const key = el.getAttribute("data-i18n-placeholder");
     const val = t(key);
-    if (val) {
+    if (val !== null && val !== undefined && val !== "") {
       el.setAttribute("placeholder", val);
     }
   });
@@ -368,15 +451,16 @@ function setLanguage(lang) {
   document.querySelectorAll("[data-i18n-title]").forEach((el) => {
     const key = el.getAttribute("data-i18n-title");
     const val = t(key);
-    if (val) {
+    if (val !== null && val !== undefined && val !== "") {
       el.setAttribute("title", val);
     }
   });
 
   // Notify components if needed
-  if (window.onLanguageChanged) {
+  if (typeof window.onLanguageChanged === "function") {
     window.onLanguageChanged(lang);
   }
+  window.dispatchEvent(new CustomEvent("sweettv-language-changed", { detail: { lang } }));
 }
 
 document.addEventListener("DOMContentLoaded", () => {
