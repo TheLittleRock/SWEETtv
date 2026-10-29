@@ -163,10 +163,10 @@
                     <div class="flex items-center justify-between gap-2">
                         <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Rychlé odkazy</span>
                         <div class="flex items-center gap-1.5">
-                            <button class="btn-copy btn-secondary text-[11px] py-1 px-2.5 rounded-lg flex items-center gap-1" data-copy-url="{{ base_url }}/playlist.m3u" title="Kopírovat M3U playlist">
+                            <button class="btn-copy btn-secondary text-[11px] py-1 px-2.5 rounded-lg flex items-center gap-1" data-copy-url="{{ base_url }}/playlist.m3u?token={{ user_token }}" title="Kopírovat M3U playlist">
                                 <span>📋 M3U</span>
                             </button>
-                            <button class="btn-copy btn-secondary text-[11px] py-1 px-2.5 rounded-lg flex items-center gap-1" data-copy-url="{{ base_url }}/epg.xml" title="Kopírovat EPG průvodce">
+                            <button class="btn-copy btn-secondary text-[11px] py-1 px-2.5 rounded-lg flex items-center gap-1" data-copy-url="{{ base_url }}/epg.xml?token={{ user_token }}" title="Kopírovat EPG průvodce">
                                 <span>📅 EPG</span>
                             </button>
                         </div>
@@ -199,9 +199,17 @@
     <!-- TAB 2: PLAYLISTS & EPG HUB -->
     <!-- ========================================================================= -->
     <div id="tab-links" class="tab-content hidden space-y-6">
-        <div class="border-b border-slate-800 pb-4">
-            <h2 class="text-xl font-bold text-white" data-i18n="links.title">M3U playlisty, EPG a portálové odkazy</h2>
-            <p class="text-xs text-slate-400 mt-1" data-i18n="links.subtitle">Předpřipravené adresy pro IPTV aplikace, Kodi, Smart TV a portály.</p>
+        <div class="border-b border-slate-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h2 class="text-xl font-bold text-white" data-i18n="links.title">M3U playlisty, EPG a portálové odkazy</h2>
+                <p class="text-xs text-slate-400 mt-1" data-i18n="links.subtitle">Předpřipravené adresy pro IPTV aplikace, Kodi, Smart TV a portály s vaším zabezpečeným tokenem.</p>
+            </div>
+            <!-- Format selector pill -->
+            <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs self-start sm:self-auto">
+                <span class="text-[11px] text-slate-500 px-2 font-semibold" data-i18n="links.format_label">Formát:</span>
+                <button type="button" id="btn-fmt-query" onclick="setLinkFormat('query')" class="px-2.5 py-1 rounded-lg font-semibold bg-slate-800 text-cyan-400 shadow-sm transition-all">?token=XYZ</button>
+                <button type="button" id="btn-fmt-path" onclick="setLinkFormat('path')" class="px-2.5 py-1 rounded-lg font-semibold text-slate-400 hover:text-white transition-all">/t/XYZ/...</button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -218,11 +226,11 @@
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
-                        <input id="url-m3u-adaptive" type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono">
+                        <input id="url-m3u-adaptive" type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
                         <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-adaptive" data-i18n="links.copy_btn">Kopírovat URL</button>
-                        <a href="{{ base_url }}/playlist.m3u" download="sweettv.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
+                        <a id="download-m3u-adaptive" href="{{ base_url }}/playlist.m3u?token={{ user_token }}" download="sweettv.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
@@ -239,11 +247,11 @@
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
-                        <input id="url-m3u-best" type="text" readonly value="{{ base_url }}/playlist.m3u?quality=best" class="input-copy text-xs font-mono">
+                        <input id="url-m3u-best" type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}&quality=best" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
                         <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-best" data-i18n="links.copy_btn">Kopírovat URL</button>
-                        <a href="{{ base_url }}/playlist.m3u?quality=best" download="sweettv_best.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
+                        <a id="download-m3u-best" href="{{ base_url }}/playlist.m3u?token={{ user_token }}&quality=best" download="sweettv_best.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
@@ -261,15 +269,15 @@
                 <div class="space-y-3">
                     <div>
                         <label class="text-[11px] text-slate-400 block mb-1" data-i18n="links.std_xml_url">Běžná XML adresa:</label>
-                        <input id="url-epg-xml" type="text" readonly value="{{ base_url }}/epg.xml" class="input-copy text-xs font-mono mb-2">
+                        <input id="url-epg-xml" type="text" readonly value="{{ base_url }}/epg.xml?token={{ user_token }}" class="input-copy text-xs font-mono mb-2">
                         <div class="flex gap-2">
                             <button class="btn-primary flex-1 text-xs py-1.5 btn-copy" data-target="url-epg-xml" data-i18n="links.copy_epg_btn">Kopírovat EPG URL</button>
-                            <a href="{{ base_url }}/epg.xml" target="_blank" class="btn-secondary text-xs py-1.5 px-3" data-i18n="links.view_btn">Zobrazit</a>
+                            <a id="link-epg-xml" href="{{ base_url }}/epg.xml?token={{ user_token }}" target="_blank" class="btn-secondary text-xs py-1.5 px-3" data-i18n="links.view_btn">Zobrazit</a>
                         </div>
                     </div>
                     <div class="pt-2 border-t border-slate-800">
                         <label class="text-[11px] text-slate-400 block mb-1" data-i18n="links.gzip_xml_url">Komprimovaná GZIP adresa (rychlejší):</label>
-                        <input id="url-epg-gz" type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono mb-2">
+                        <input id="url-epg-gz" type="text" readonly value="{{ base_url }}/epg.xml.gz?token={{ user_token }}" class="input-copy text-xs font-mono mb-2">
                         <button class="btn-secondary w-full text-xs py-1.5 btn-copy" data-target="url-epg-gz" data-i18n="links.copy_gzip_btn">Kopírovat Gzip URL</button>
                     </div>
                 </div>
@@ -287,11 +295,11 @@
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
-                        <input id="url-m3u-catchup" type="text" readonly value="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" class="input-copy text-xs font-mono">
+                        <input id="url-m3u-catchup" type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}&quality=best&catchup=vod" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
                         <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-catchup" data-i18n="links.copy_btn">Kopírovat URL</button>
-                        <a href="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" download="sweettv_catchup.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
+                        <a id="download-m3u-catchup" href="{{ base_url }}/playlist.m3u?token={{ user_token }}&quality=best&catchup=vod" download="sweettv_catchup.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
@@ -308,11 +316,11 @@
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
-                        <input id="url-m3u-clean" type="text" readonly value="{{ base_url }}/playlist_clean.m3u?quality=best" class="input-copy text-xs font-mono">
+                        <input id="url-m3u-clean" type="text" readonly value="{{ base_url }}/playlist_clean.m3u?token={{ user_token }}&quality=best" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
                         <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-clean" data-i18n="links.copy_btn">Kopírovat URL</button>
-                        <a href="{{ base_url }}/playlist_clean.m3u?quality=best" download="sweettv_clean.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
+                        <a id="download-m3u-clean" href="{{ base_url }}/playlist_clean.m3u?token={{ user_token }}&quality=best" download="sweettv_clean.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
@@ -366,15 +374,15 @@
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
                         <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.username">Uživatelské jméno:</span>
                         <div class="flex items-center justify-between">
-                            <span class="font-mono text-cyan-300 text-xs font-semibold select-all" id="display-xtream-user">{{ xtream_user }}</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ xtream_user }}" data-i18n="links.copy_btn">Kopírovat</button>
+                            <span class="font-mono text-cyan-300 text-xs font-semibold select-all" id="display-xtream-user">{{ username }}</span>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ username }}" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
                         <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.password">Heslo:</span>
                         <div class="flex items-center justify-between">
-                            <span class="font-mono text-cyan-300 text-xs font-semibold select-all" id="display-xtream-pwd">{{ xtream_password }}</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ xtream_password }}" data-i18n="links.copy_btn">Kopírovat</button>
+                            <span class="font-mono text-cyan-300 text-xs font-semibold select-all" id="display-xtream-pwd">Vaše heslo k účtu</span>
+                            <span class="text-[10px] text-slate-500 font-mono">Heslo účtu</span>
                         </div>
                     </div>
                 </div>
@@ -383,8 +391,139 @@
         </div>
     </div>
 
+    {% if is_admin %}
     <!-- ========================================================================= -->
-    <!-- TAB 3: SWEET.TV ACCOUNT & PAIRING MANAGER -->
+    <!-- TAB: USER MANAGEMENT & TOKENS (ADMIN ONLY) -->
+    <!-- ========================================================================= -->
+    <div id="tab-users" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    <span data-i18n="users.title">Správa uživatelů a klientských tokenů</span>
+                </h2>
+                <p class="text-xs text-slate-400 mt-1" data-i18n="users.subtitle">Spravujte účty, přístupová oprávnění a bezpečnostní tokeny pro IPTV přehrávače a zařízení.</p>
+            </div>
+            <button type="button" onclick="openCreateUserModal()" class="btn-primary text-xs py-2 px-3.5 rounded-xl flex items-center gap-1.5 whitespace-nowrap shadow-lg shadow-cyan-500/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+                <span data-i18n="users.add_btn">+ Přidat uživatele</span>
+            </button>
+        </div>
+
+        <!-- Users Table Card -->
+        <div class="card overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-950 border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
+                        <tr>
+                            <th class="py-3 px-4" data-i18n="users.col_user">Uživatel</th>
+                            <th class="py-3 px-4" data-i18n="users.col_role">Role</th>
+                            <th class="py-3 px-4" data-i18n="users.col_token">M3U Token</th>
+                            <th class="py-3 px-4" data-i18n="users.col_status">Stav</th>
+                            <th class="py-3 px-4" data-i18n="users.col_expires">Expirace</th>
+                            <th class="py-3 px-4" data-i18n="users.col_last_login">Poslední aktivita</th>
+                            <th class="py-3 px-4 text-right" data-i18n="users.col_actions">Akce</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body" class="divide-y divide-slate-800/60 font-medium">
+                        <tr>
+                            <td colspan="7" class="py-8 text-center text-slate-500">
+                                <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-cyan-500 border-t-transparent mb-2"></div>
+                                <p data-i18n="users.loading">Načítám uživatele...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Create User Modal -->
+        <div id="modal-create-user" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-fade-in">
+                <button onclick="closeCreateUserModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+                <h3 class="text-base font-bold text-white mb-1" data-i18n="users.create_title">Přidat nového uživatele</h3>
+                <p class="text-xs text-slate-400 mb-4" data-i18n="users.create_desc">Vytvořte účet pro přístup k Web TV a získejte osobní M3U token.</p>
+
+                <div id="create-user-error" class="hidden mb-3 text-xs text-red-400 bg-red-950/60 p-2.5 rounded-xl border border-red-500/30"></div>
+
+                <form id="form-create-user" class="space-y-3">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="login.username">Uživatelské jméno</label>
+                        <input id="create-username" type="text" required class="input-form h-9 text-xs" placeholder="např. petr">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="login.password">Heslo</label>
+                        <input id="create-password" type="password" required minlength="4" class="input-form h-9 text-xs" placeholder="••••••••">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.role_label">Oprávnění / Role</label>
+                        <select id="create-role" class="input-form h-9 text-xs">
+                            <option value="user" selected data-i18n="users.role_user">Běžný uživatel (Web TV + Playlisty)</option>
+                            <option value="admin" data-i18n="users.role_admin">Administrátor (Plný přístup)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.expires_label">Datum expirace účtu (volitelné)</label>
+                        <input id="create-expires" type="date" class="input-form h-9 text-xs text-slate-300">
+                        <span class="text-[10px] text-slate-500 block mt-0.5" data-i18n="users.expires_hint">Ponechte prázdné pro neomezenou platnost</span>
+                    </div>
+
+                    <button type="submit" id="btn-save-new-user" class="btn-primary w-full py-2.5 text-xs font-bold rounded-xl mt-3">
+                        <span data-i18n="users.create_submit">Vytvořit uživatele</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Edit User Modal -->
+        <div id="modal-edit-user" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm hidden">
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative animate-fade-in">
+                <button onclick="closeEditUserModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+                <h3 class="text-base font-bold text-white mb-1" data-i18n="users.edit_title">Upravit uživatele</h3>
+                <p id="edit-user-subtitle" class="text-xs text-slate-400 mb-4 font-mono"></p>
+
+                <div id="edit-user-error" class="hidden mb-3 text-xs text-red-400 bg-red-950/60 p-2.5 rounded-xl border border-red-500/30"></div>
+
+                <form id="form-edit-user" class="space-y-3">
+                    <input type="hidden" id="edit-user-id">
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.role_label">Oprávnění / Role</label>
+                        <select id="edit-role" class="input-form h-9 text-xs">
+                            <option value="user" data-i18n="users.role_user">Běžný uživatel</option>
+                            <option value="admin" data-i18n="users.role_admin">Administrátor</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300 py-1">
+                            <input id="edit-is-active" type="checkbox" class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0">
+                            <span data-i18n="users.active_checkbox">Účet je aktivní (povolit přihlášení a streamy)</span>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.expires_label">Datum expirace</label>
+                        <input id="edit-expires" type="date" class="input-form h-9 text-xs text-slate-300">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.reset_pwd_label">Nové heslo (ponechte prázdné pro zachování stávajícího)</label>
+                        <input id="edit-new-pwd" type="password" minlength="4" class="input-form h-9 text-xs" placeholder="Nové heslo...">
+                    </div>
+
+                    <button type="submit" id="btn-save-edit-user" class="btn-primary w-full py-2.5 text-xs font-bold rounded-xl mt-3">
+                        <span data-i18n="users.save_submit">Uložit změny</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if is_admin %}
+    <!-- ========================================================================= -->
+    <!-- TAB 3: SWEET.TV ACCOUNT & PAIRING MANAGER (ADMIN ONLY) -->
     <!-- ========================================================================= -->
     <div id="tab-account" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
@@ -497,6 +636,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- ========================================================================= -->
     <!-- TAB 4: STATUS & METRICS -->
@@ -580,8 +720,9 @@
         </div>
     </div>
 
+    {% if is_admin %}
     <!-- ========================================================================= -->
-    <!-- TAB 4: SETTINGS -->
+    <!-- TAB 4: SETTINGS (ADMIN ONLY) -->
     <!-- ========================================================================= -->
     <div id="tab-settings" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
@@ -675,6 +816,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- ========================================================================= -->
     <!-- TAB 6: SETUP GUIDES & INTEGRATION -->
@@ -713,13 +855,13 @@
                         <li>
                             <strong>Vložte M3U a EPG URL:</strong> Do pole pro M3U zadejte:
                             <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat M3U</button>
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u?token={{ user_token }}" data-i18n="links.copy_btn">Kopírovat M3U</button>
                             </div>
                             <span class="text-slate-400 block mt-1">A do pole pro EPG zadejte:</span>
                             <div class="mt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/epg.xml" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml" data-i18n="links.copy_epg_btn">Kopírovat EPG</button>
+                                <input type="text" readonly value="{{ base_url }}/epg.xml?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml?token={{ user_token }}" data-i18n="links.copy_epg_btn">Kopírovat EPG</button>
                             </div>
                         </li>
                         <li>
@@ -747,21 +889,21 @@
                         <li>V TiviMate zvolte <strong>Nastavení &rarr; Playlisty &rarr; Přidat playlist</strong>.</li>
                         <li>Zvolte <strong>M3U playlist</strong> a vložte odkaz:
                             <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat M3U</button>
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u?token={{ user_token }}" data-i18n="links.copy_btn">Kopírovat M3U</button>
                             </div>
                         </li>
                         <li>Pro televizní program (EPG) vložte:
                             <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml.gz" data-i18n="links.copy_gzip_btn">Kopírovat EPG GZIP</button>
+                                <input type="text" readonly value="{{ base_url }}/epg.xml.gz?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml.gz?token={{ user_token }}" data-i18n="links.copy_gzip_btn">Kopírovat EPG GZIP</button>
                             </div>
                         </li>
                         <li>
                             <strong>Aktivace archivu (Catchup):</strong> V nastavení playlistu v TiviMate přejděte na <em>Catchup</em> &rarr; nastavte na <strong>Auto</strong> nebo <strong>Xtream Codes / Flussonic</strong>. Zpětné přehrávání až 7 dní bude okamžitě aktivní!
                         </li>
                         <li>
-                            <em>Alternativa přes Xtream Codes:</em> Můžete zvolit i přihlášení přes Xtream Codes: Server <code class="code-inline">{{ base_url }}</code>, uživatel <code class="code-inline">{{ xtream_user }}</code>, heslo <code class="code-inline">{{ xtream_password }}</code>.
+                            <em>Alternativa přes Xtream Codes:</em> Můžete zvolit i přihlášení přes Xtream Codes: Server <code class="code-inline">{{ base_url }}</code>, uživatel <code class="code-inline">{{ username }}</code>, heslo: <em>vaše přihlašovací heslo</em>.
                         </li>
                     </ol>
                 </div>
@@ -785,8 +927,8 @@
                         <li>Zvolte <strong>Add Playlist</strong> &rarr; <strong>M3U URL</strong>.</li>
                         <li>Vložte URL playlistu a EPG:
                             <div class="mt-1.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat M3U</button>
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u?token={{ user_token }}" data-i18n="links.copy_btn">Kopírovat M3U</button>
                             </div>
                         </li>
                         <li>Aplikace automaticky synchronizuje seznamy a EPG přes iCloud na všech vašich zařízeních Apple!</li>
@@ -811,14 +953,14 @@
                         <li>Nainstalujte doplněk <strong>PVR IPTV Simple Client</strong> v Kodi (Nastavení &rarr; Doplňky &rarr; Instalovat z repozitáře &rarr; Klienti PVR &rarr; PVR IPTV Simple Client).</li>
                         <li>V konfiguraci doplňku &rarr; záložka <strong>Obecné</strong>:
                             <div class="mt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u" data-i18n="links.copy_btn">Kopírovat</button>
+                                <input type="text" readonly value="{{ base_url }}/playlist.m3u?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-primary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u?token={{ user_token }}" data-i18n="links.copy_btn">Kopírovat</button>
                             </div>
                         </li>
                         <li>Přejděte na záložku <strong>EPG</strong>:
                             <div class="mt-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                                <input type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono select-all flex-1">
-                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml.gz" data-i18n="links.copy_gzip_btn">Kopírovat Gzip</button>
+                                <input type="text" readonly value="{{ base_url }}/epg.xml.gz?token={{ user_token }}" class="input-copy text-xs font-mono select-all flex-1">
+                                <button type="button" class="btn-copy btn-secondary text-xs py-1.5 px-3 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml.gz?token={{ user_token }}" data-i18n="links.copy_gzip_btn">Kopírovat Gzip</button>
                             </div>
                         </li>
                         <li>Přejděte na záložku <strong>Zpětné zhlédnutí (Catchup)</strong>:
@@ -847,7 +989,7 @@
                 <div class="space-y-3 text-xs text-slate-300">
                     <ul class="space-y-2">
                         <li>
-                            <strong>VLC Media Player:</strong> Stiskněte <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]">Ctrl + N</kbd> (nebo <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]">Cmd + N</kbd> na Macu) &rarr; zadejte URL <code class="code-inline select-all">{{ base_url }}/playlist.m3u</code> &rarr; Přehrát.
+                            <strong>VLC Media Player:</strong> Stiskněte <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]">Ctrl + N</kbd> (nebo <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-[10px]">Cmd + N</kbd> na Macu) &rarr; zadejte URL <code class="code-inline select-all">{{ base_url }}/playlist.m3u?token={{ user_token }}</code> &rarr; Přehrát.
                         </li>
                         <li>
                             <strong>IPTVnator / SFVIP Player:</strong> Bezplatné přehrávače s kompletním grafickým rozhraním, EPG televizním programem a vyhledáváním. Stačí vložit URL playlistu a EPG ze záložky <a href="#" class="text-cyan-400 underline" onclick="switchTab('links')">Playlisty</a>.

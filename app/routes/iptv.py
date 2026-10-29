@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, unquote
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
+from app.auth import validate_token_or_session
 from app.config import config
 from app.epg import generate_m3u_playlist, generate_xmltv_epg, get_xmltv_epg_gz
 from app.stream import (
@@ -55,13 +56,22 @@ def clean_id(raw_id: str) -> int:
     raise ValueError(f"No numeric ID found in '{raw_id}'")
 
 
+# =========================================================================
+# M3U PLAYLIST ROUTES (TOKEN QUERY PARAM & PATH PREFIX /t/{token}/)
+# =========================================================================
+
 @router.get("/playlist.m3u", response_class=Response)
 @router.get("/playlist.m3u8", response_class=Response)
 @router.get("/playlist_clean.m3u", response_class=Response)
 @router.get("/playlist_bare.m3u", response_class=Response)
+@router.get("/t/{token}/playlist.m3u", response_class=Response)
+@router.get("/t/{token}/playlist.m3u8", response_class=Response)
+@router.get("/t/{token}/playlist_clean.m3u", response_class=Response)
+@router.get("/t/{token}/playlist_bare.m3u", response_class=Response)
 def get_playlist(
     request: Request,
-    quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best' (highest bitrate), '1080p', '720p'"),
+    token: Optional[str] = None,
+    quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best', '1080p', '720p'"),
     catchup: Optional[str] = Query(None, description="Catchup mode: 'vod', 'default', 'none', '0'"),
     no_epg: Optional[bool] = Query(False, description="Omit url-tvg header to avoid triggering automatic EPG import"),
     legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs"),
@@ -70,7 +80,10 @@ def get_playlist(
     """
     Returns M3U/M3U8 playlist with full channel lineup, category groups, logos,
     and optional catchup replay support.
+    Protected by user token or session.
     """
+    user = validate_token_or_session(request, token)
+
     if not config.is_logged:
         raise HTTPException(
             status_code=401,
@@ -81,13 +94,17 @@ def get_playlist(
     is_bare = bool(bare) or request.url.path.endswith("playlist_bare.m3u")
     is_clean = is_bare or no_epg or request.url.path.endswith("playlist_clean.m3u")
     base_url = get_effective_base_url(request)
+
+    token_mode = "path" if token else "query"
     playlist_text = generate_m3u_playlist(
         base_url,
         quality=quality or config.default_quality,
         catchup=catchup,
         no_epg=is_clean,
         legacy_id=bool(legacy_id),
-        bare=is_bare
+        bare=is_bare,
+        token=user.token,
+        token_mode=token_mode
     )
 
     return Response(
@@ -101,13 +118,22 @@ def get_playlist(
     )
 
 
+# =========================================================================
+# XMLTV EPG ROUTES
+# =========================================================================
+
 @router.get("/epg.xml", response_class=Response)
+@router.get("/t/{token}/epg.xml", response_class=Response)
 def get_epg(
+    request: Request,
+    token: Optional[str] = None,
     country: Optional[str] = Query(None, description="Language code override (e.g. 'cs', 'sk', 'hu')"),
     refresh: bool = Query(False, description="Force fresh download from Sweet.tv"),
     legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs")
 ):
     """Returns XMLTV Electronic Program Guide formatted XML."""
+    validate_token_or_session(request, token)
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -124,10 +150,13 @@ def get_epg(
 
 
 @router.get("/epg.xml.gz", response_class=Response)
-def get_epg_gz():
+@router.get("/t/{token}/epg.xml.gz", response_class=Response)
+def get_epg_gz(request: Request, token: Optional[str] = None):
     """Returns gzip-compressed XMLTV EPG for fast client downloads."""
+    validate_token_or_session(request, token)
+
     if not config.is_logged:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
     gz_content = get_xmltv_epg_gz()
     return Response(
@@ -142,12 +171,23 @@ def get_epg_gz():
     )
 
 
+# =========================================================================
+# STREAM PLAYBACK ROUTES
+# =========================================================================
+
 @router.get("/stream/variant.m3u8", response_class=Response)
-def get_stream_variant(request: Request, url: str = Query(..., description="Target Sweet.tv variant URL")):
+@router.get("/t/{token}/stream/variant.m3u8", response_class=Response)
+def get_stream_variant(
+    request: Request,
+    url: str = Query(..., description="Target Sweet.tv variant URL"),
+    token: Optional[str] = None
+):
     """
     Proxies variant M3U8 with legitimate headers and rewrites relative TS paths
     to absolute CDN URLs.
     """
+    validate_token_or_session(request, token)
+
     raw_url = unquote(url)
     base_url = get_effective_base_url(request)
     content, media_type = build_proxy_variant_m3u8(raw_url, base_url)
@@ -168,9 +208,14 @@ def get_stream_variant(request: Request, url: str = Query(..., description="Targ
 @router.get("/stream/{channel_id}", response_class=Response)
 @router.get("/play/{channel_id}.m3u8", response_class=Response)
 @router.get("/play/{channel_id}", response_class=Response)
+@router.get("/t/{token}/stream/{channel_id}.m3u8", response_class=Response)
+@router.get("/t/{token}/stream/{channel_id}", response_class=Response)
+@router.get("/t/{token}/play/{channel_id}.m3u8", response_class=Response)
+@router.get("/t/{token}/play/{channel_id}", response_class=Response)
 def get_channel_stream(
     request: Request,
     channel_id: str,
+    token: Optional[str] = None,
     quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best', '1080p', '720p'"),
     epg_id: Optional[int] = Query(None, description="Direct EPG program ID for catchup archive"),
     utc: Optional[int] = Query(None, description="UTC timestamp for catchup replay"),
@@ -178,10 +223,10 @@ def get_channel_stream(
 ):
     """
     Main HLS Stream Endpoint for Live TV & Timestamp Catchup.
-    Proxies manifest with legit Chrome headers to prevent Sweet.tv CDN blocking,
-    rewriting variant URLs for IPTVnator, Video.js, Kodi, and VLC.
-    Supports both live streaming and timestamp-based archive replay.
+    Protected by user token or session.
     """
+    validate_token_or_session(request, token)
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -231,13 +276,20 @@ def get_channel_stream(
 @router.get("/stream/{channel_id}/{epg_id}", response_class=Response)
 @router.get("/play/{channel_id}/{epg_id}.m3u8", response_class=Response)
 @router.get("/play/{channel_id}/{epg_id}", response_class=Response)
+@router.get("/t/{token}/stream/{channel_id}/{epg_id}.m3u8", response_class=Response)
+@router.get("/t/{token}/stream/{channel_id}/{epg_id}", response_class=Response)
+@router.get("/t/{token}/play/{channel_id}/{epg_id}.m3u8", response_class=Response)
+@router.get("/t/{token}/play/{channel_id}/{epg_id}", response_class=Response)
 def get_catchup_stream(
     request: Request,
     channel_id: str,
     epg_id: str,
+    token: Optional[str] = None,
     quality: Optional[str] = Query(None, description="Quality preset")
 ):
     """Catchup archive replay stream endpoint."""
+    validate_token_or_session(request, token)
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -261,7 +313,6 @@ def get_catchup_stream(
             digits = "".join(c for c in raw_clean if c.isdigit())
             if digits:
                 num_val = int(digits)
-                # If number is in standard Unix timestamp range (1 to 3 billion), resolve via EPG
                 if 1_000_000_000 <= num_val <= 3_000_000_000:
                     pid = resolve_epg_id_from_utc(cid, num_val) or num_val
                 else:
@@ -269,7 +320,6 @@ def get_catchup_stream(
         except Exception:
             pid = None
 
-    # If pid could not be determined from path, inspect query parameters
     if not pid:
         ts_val = params.get("utc") or params.get("start") or params.get("timestamp")
         if ts_val:
@@ -298,5 +348,3 @@ def get_catchup_stream(
             "Cache-Control": "no-cache, no-store, must-revalidate",
         }
     )
-
-

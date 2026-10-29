@@ -73,12 +73,15 @@ def generate_m3u_playlist(
     catchup: Optional[str] = None,
     no_epg: bool = False,
     legacy_id: bool = False,
-    bare: bool = False
+    bare: bool = False,
+    token: Optional[str] = None,
+    token_mode: str = "query"
 ) -> str:
     """
     Generates clean, standard M3U/M3U8 playlist with full IPTV metadata,
     category groupings, channel logos, and optional catchup replay tags.
     Universally compatible with IPTV portals, set-top boxes, Kodi, TiviMate, VLC.
+    Supports secure user token in query param or path prefix mode.
     """
     data = get_cached_channels(need_epg=False)
     if not data or data.get("status") != "OK":
@@ -86,7 +89,24 @@ def generate_m3u_playlist(
 
     categories: Dict[int, str] = {cat.get("id"): cat.get("caption", "") for cat in data.get("categories", [])}
 
-    q_param = f"?quality={quality}" if quality and quality != "auto" else ""
+    # Build base stream path & query parameters
+    use_path_token = bool(token and token_mode == "path")
+    stream_prefix = f"{base_url}/t/{token}/stream" if use_path_token else f"{base_url}/stream"
+
+    query_parts = []
+    if token and not use_path_token:
+        query_parts.append(f"token={token}")
+    if quality and quality != "auto":
+        query_parts.append(f"quality={quality}")
+    q_param = f"?{'&'.join(query_parts)}" if query_parts else ""
+
+    # EPG URL
+    if use_path_token:
+        epg_url = f"{base_url}/t/{token}/epg.xml"
+    elif token:
+        epg_url = f"{base_url}/epg.xml?token={token}"
+    else:
+        epg_url = f"{base_url}/epg.xml"
 
     # Determine whether catchup tags should be included in the playlist
     if catchup is not None:
@@ -101,7 +121,7 @@ def generate_m3u_playlist(
         mode = "default"
 
     if not no_epg and not bare:
-        lines = [f'#EXTM3U url-tvg="{base_url}/epg.xml" x-tvg-url="{base_url}/epg.xml"']
+        lines = [f'#EXTM3U url-tvg="{epg_url}" x-tvg-url="{epg_url}"']
     else:
         lines = ['#EXTM3U']
 
@@ -123,7 +143,7 @@ def generate_m3u_playlist(
         tvg_id = f"{cid}.id.com" if legacy_id else str(cid)
 
         # Standard stream URL
-        stream_link = f"{base_url}/stream/{cid}.m3u8{q_param}"
+        stream_link = f"{stream_prefix}/{cid}.m3u8{q_param}"
 
         if bare:
             extinf = f'#EXTINF:-1,{cname}'
@@ -135,11 +155,11 @@ def generate_m3u_playlist(
                 if mode == "append":
                     catchup_tag = f'catchup="append" catchup-source="{sep}utc={{utc}}&lutc={{lutc}}" catchup-days="{catchup_days}"'
                 elif mode in ("vod", "kodi"):
-                    catchup_source = f"{base_url}/stream/{cid}/{{catchup-id}}.m3u8{q_param}"
+                    catchup_source = f"{stream_prefix}/{cid}/{{catchup-id}}.m3u8{q_param}"
                     catchup_tag = f'catchup="vod" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
                 else:
                     # Universal standard (IPTVnator, TiviMate, OTT Navigator, VLC, Televizo)
-                    catchup_source = f"{base_url}/stream/{cid}.m3u8{q_param}{sep}utc={{utc}}&lutc={{lutc}}"
+                    catchup_source = f"{stream_prefix}/{cid}.m3u8{q_param}{sep}utc={{utc}}&lutc={{lutc}}"
                     catchup_tag = f'catchup="default" catchup-source="{catchup_source}" catchup-days="{catchup_days}"'
 
             if catchup_tag:

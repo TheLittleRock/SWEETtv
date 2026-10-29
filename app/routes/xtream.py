@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.auth import authenticate_user
 from app.config import config
 from app.epg import get_cached_channels
 from app.routes.iptv import clean_id, get_effective_base_url
@@ -13,6 +14,18 @@ from app.stream import build_proxy_master_m3u8, resolve_epg_id_from_utc, safe_pa
 
 logger = logging.getLogger("SweetTV.Routes.Xtream")
 router = APIRouter(tags=["Xtream Codes API"])
+
+
+def validate_xtream_user(username: Optional[str], password: Optional[str]) -> bool:
+    """Validates Xtream Codes user credentials against SQLite and legacy fallback."""
+    if not username or not password:
+        return False
+    user = authenticate_user(username.strip(), password.strip())
+    if user and user.can_access():
+        return True
+    if username.strip() == config.xtream_user and password.strip() == config.xtream_password:
+        return True
+    return False
 
 
 def _parse_timeshift_timestamp(start_str: str) -> Optional[int]:
@@ -51,9 +64,9 @@ async def player_api(
     valid_user = config.xtream_user
     valid_pwd = config.xtream_password
 
-    # If explicit credentials were submitted, validate against configured credentials
+    # Validate against SQLite database or configured credentials
     if username is not None and password is not None:
-        if username.strip() != valid_user or password.strip() != valid_pwd:
+        if not validate_xtream_user(username, password):
             logger.warning(f"Xtream authentication rejected for user '{username}'")
             return JSONResponse(content={"user_info": {"auth": 0}})
 
@@ -199,6 +212,9 @@ def xtream_live_stream(
     quality: Optional[str] = Query(None)
 ):
     """Handles Xtream live stream playback."""
+    if not validate_xtream_user(username, password):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -225,6 +241,8 @@ def xtream_live_stream(
 @router.get("/streaming/timeshift.php", response_class=Response)
 def xtream_timeshift_stream(
     request: Request,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
     stream_id: Optional[str] = None,
     start: Optional[str] = None,
     duration: Optional[int] = None,
@@ -232,6 +250,11 @@ def xtream_timeshift_stream(
     stream: Optional[str] = Query(None)
 ):
     """Handles Xtream timeshift (catchup archive) playback."""
+    u = username or request.query_params.get("username")
+    p = password or request.query_params.get("password")
+    if u and p and not validate_xtream_user(u, p):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 

@@ -41,6 +41,8 @@ config.json
 **/config.json
 data/*.cache
 data/*.log
+data/*.db
+*.db
 
 # Logs
 *.log
