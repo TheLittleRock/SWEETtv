@@ -24,14 +24,14 @@ function switchTab(tabName) {
     const qLinks = document.getElementById("quick-toggle-links");
     if (qPlayer && qLinks) {
         if (tabName === "player") {
-            qPlayer.className = "quick-mode-btn active flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm";
-            qLinks.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+            qPlayer.className = "quick-mode-btn active flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm";
+            qLinks.className = "quick-mode-btn flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
         } else if (tabName === "links") {
-            qPlayer.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
-            qLinks.className = "quick-mode-btn active flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-emerald-400 border border-slate-700 shadow-sm";
+            qPlayer.className = "quick-mode-btn flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+            qLinks.className = "quick-mode-btn active flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-emerald-400 border border-slate-700 shadow-sm";
         } else {
-            qPlayer.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
-            qLinks.className = "quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+            qPlayer.className = "quick-mode-btn flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
+            qLinks.className = "quick-mode-btn flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white";
         }
     }
 
@@ -91,26 +91,34 @@ async function updateSystemStatus() {
 
         if (data.logged) {
             indicatorDot.className = "w-2 h-2 rounded-full bg-emerald-400";
-            statusText.textContent = `Connected (${data.country_code.toUpperCase()})`;
-            authBtn.textContent = "Re-connect";
-            authBtn.className = "btn-secondary text-xs px-3 py-1.5";
+            const connStr = typeof t === "function" ? t("nav.connected") : "Connected";
+            statusText.textContent = `${connStr} (${data.country_code.toUpperCase()})`;
+            authBtn.textContent = typeof t === "function" ? t("nav.reconnect") : "Re-connect";
+            authBtn.className = "btn-secondary text-xs px-2.5 sm:px-3 py-1.5 whitespace-nowrap";
 
             if (accountCard) {
-                accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Active Session`;
+                accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> ${typeof t === "function" ? t("status.account") : "Active Session"}`;
             }
         } else {
             indicatorDot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
-            statusText.textContent = "Not Connected";
-            authBtn.textContent = "Connect Account";
-            authBtn.className = "btn-primary text-xs px-3 py-1.5";
+            statusText.textContent = typeof t === "function" ? t("nav.disconnected") : "Disconnected";
+            authBtn.textContent = typeof t === "function" ? t("nav.connect") : "Connect";
+            authBtn.className = "btn-primary text-xs px-2.5 sm:px-3 py-1.5 whitespace-nowrap";
 
             if (accountCard) {
-                accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> Logged Out`;
+                accountCard.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> ${typeof t === "function" ? t("nav.disconnected") : "Logged Out"}`;
             }
         }
 
         if (channelsCard && data.total_channels > 0) {
-            channelsCard.textContent = `${data.total_channels} Channels`;
+            channelsCard.textContent = `${data.total_channels}`;
+        }
+
+        if (document.getElementById("display-virtual-mac") && data.mac) {
+            document.getElementById("display-virtual-mac").textContent = data.mac;
+        }
+        if (document.getElementById("display-virtual-uuid") && data.uuid) {
+            document.getElementById("display-virtual-uuid").textContent = data.uuid;
         }
 
         tokenRemaining = data.token_expires_in_seconds || 0;
@@ -304,15 +312,52 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Logout Button
+    // Account Disconnect Routine
+    async function handleAccountDisconnect() {
+        const confirmMsg = typeof t === "function" ? t("status.disconnect_confirm") : "Are you sure you want to disconnect from your Sweet.tv account?";
+        if (confirm(confirmMsg)) {
+            await fetch("/api/auth/logout", { method: "POST" });
+            showToast(typeof t === "function" ? t("msg.logged_out") : "Account disconnected.", "info");
+            updateSystemStatus();
+            location.reload();
+        }
+    }
+
     const logoutBtn = document.getElementById("btn-logout");
     if (logoutBtn) {
-        logoutBtn.addEventListener("click", async () => {
-            if (confirm("Are you sure you want to disconnect your Sweet.tv account?")) {
-                await fetch("/api/auth/logout", { method: "POST" });
-                showToast("Account disconnected.", "info");
-                updateSystemStatus();
-                location.reload();
+        logoutBtn.addEventListener("click", handleAccountDisconnect);
+    }
+    const statusDisconnectBtn = document.getElementById("btn-status-disconnect");
+    if (statusDisconnectBtn) {
+        statusDisconnectBtn.addEventListener("click", handleAccountDisconnect);
+    }
+
+    // Reset Device Hardware Identity (New UUID & MAC)
+    const resetDeviceBtn = document.getElementById("btn-status-reset-device");
+    if (resetDeviceBtn) {
+        resetDeviceBtn.addEventListener("click", async () => {
+            const confirmMsg = typeof t === "function" ? t("status.reset_device_confirm") : "Are you sure you want to reset device identity?";
+            if (confirm(confirmMsg)) {
+                resetDeviceBtn.disabled = true;
+                try {
+                    const res = await fetch("/api/auth/reset-device", { method: "POST" });
+                    const data = await res.json();
+                    if (data.status === "OK") {
+                        showToast(typeof t === "function" ? t("msg.device_reset") : "Device identity reset successfully.", "success");
+                        if (document.getElementById("display-virtual-mac")) {
+                            document.getElementById("display-virtual-mac").textContent = data.mac;
+                        }
+                        if (document.getElementById("display-virtual-uuid")) {
+                            document.getElementById("display-virtual-uuid").textContent = data.uuid;
+                        }
+                        updateSystemStatus();
+                        openConnectModal();
+                    }
+                } catch (e) {
+                    showToast("Error resetting device identity.", "error");
+                } finally {
+                    resetDeviceBtn.disabled = false;
+                }
             }
         });
     }

@@ -4,28 +4,28 @@
 <div class="space-y-6">
 
     <!-- ========================================================================= -->
-    <!-- QUICK MODE SWITCHER: Fast 1-Click Toggle between Web Player and M3U Links -->
+    <!-- QUICK MODE SWITCHER: High-Contrast Responsive Segmented Switch -->
     <!-- ========================================================================= -->
-    <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2.5 rounded-2xl shadow-md">
-        <!-- Segmented Mode Toggle Buttons -->
-        <div class="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-            <button id="quick-toggle-player" onclick="switchTab('player')" class="quick-mode-btn active flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all">
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-2 sm:p-2.5 rounded-2xl shadow-md">
+        <!-- Segmented Mode Toggle Buttons (Full-width on mobile) -->
+        <div class="grid grid-cols-2 sm:flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 flex-1 sm:flex-initial">
+            <button id="quick-toggle-player" onclick="switchTab('player')" class="quick-mode-btn active flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm">
                 <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span data-i18n="quick.live_tv">📺 Live Web TV Player</span>
+                <span data-i18n="quick.live_tv">📺 Živé webové vysílání</span>
             </button>
-            <button id="quick-toggle-links" onclick="switchTab('links')" class="quick-mode-btn flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
+            <button id="quick-toggle-links" onclick="switchTab('links')" class="quick-mode-btn flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-white">
                 <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                <span data-i18n="quick.copy_links">🔗 Copy M3U &amp; EPG Links</span>
+                <span data-i18n="quick.copy_links">🔗 Odkazy na M3U a EPG</span>
             </button>
         </div>
 
-        <!-- Direct Quick Copy Pills -->
-        <div class="flex items-center gap-2">
-            <button class="btn-copy btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5" data-copy-url="{{ base_url }}/playlist.m3u">
-                <span data-i18n="quick.copy_m3u">📋 Copy M3U</span>
+        <!-- Direct Quick Copy Pills (Responsive grid on mobile) -->
+        <div class="grid grid-cols-2 sm:flex items-center gap-2">
+            <button class="btn-copy btn-secondary text-xs py-2 sm:py-1.5 px-3 flex items-center justify-center gap-1.5 whitespace-nowrap" data-copy-url="{{ base_url }}/playlist.m3u">
+                <span data-i18n="quick.copy_m3u">📋 Kopírovat M3U</span>
             </button>
-            <button class="btn-copy btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5" data-copy-url="{{ base_url }}/epg.xml">
-                <span data-i18n="quick.copy_epg">📅 Copy EPG</span>
+            <button class="btn-copy btn-secondary text-xs py-2 sm:py-1.5 px-3 flex items-center justify-center gap-1.5 whitespace-nowrap" data-copy-url="{{ base_url }}/epg.xml">
+                <span data-i18n="quick.copy_epg">📅 Kopírovat EPG</span>
             </button>
         </div>
     </div>
@@ -47,96 +47,109 @@
                         <div class="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 mb-4 shadow-xl">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         </div>
-                        <h4 class="text-lg font-bold text-white mb-1">Select a Channel to Watch</h4>
-                        <p class="text-xs text-slate-400 max-w-sm">Browse the channel list on the right and click any channel to start high-definition streaming.</p>
+                        <h4 class="text-lg font-bold text-white mb-1" data-i18n="player.select_channel">Vyberte kanál pro sledování</h4>
+                        <p class="text-xs text-slate-400 max-w-sm" data-i18n="player.select_channel_desc">Procházejte seznam stanic vpravo a klikněte na kanál pro spuštění přehrávání ve vysoké kvalitě.</p>
                     </div>
 
                     <!-- Loading Indicator -->
                     <div id="player-loading" class="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center hidden pointer-events-none">
                         <div class="flex flex-col items-center gap-2">
                             <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-cyan-500 border-t-transparent"></div>
-                            <span class="text-xs text-white/90 font-medium">Buffering highest quality stream...</span>
+                            <span class="text-xs text-white/90 font-medium" data-i18n="player.buffering">Načítám stream...</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Replay Notification Banner (Visible when viewing archive recording) -->
-                <div id="active-replay-banner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-300">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-                        <span>Watching Catchup Archive: <strong id="replay-program-name" class="text-white">Program Name</strong></span>
+                <div id="active-replay-banner" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-300">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0"></span>
+                        <span class="truncate"><span data-i18n="player.watching_replay">Sledujete pořad z archivu:</span> <strong id="replay-program-name" class="text-white">Program Name</strong></span>
                     </div>
-                    <button id="btn-return-live" class="btn-primary text-xs py-1 px-3">
-                        Return to Live TV
+                    <button id="btn-return-live" class="btn-primary text-xs py-1 px-3 whitespace-nowrap">
+                        <span data-i18n="player.return_live">Zpět na živé vysílání</span>
                     </button>
                 </div>
 
-                <!-- Stream Controls & Quality Selector Toolbar -->
-                <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+                <!-- Stream Controls & Quality Selector Toolbar (Responsive) -->
+                <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
-                        <div class="flex flex-col">
-                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stream Quality &amp; Codec</span>
+                        <div class="flex flex-col w-full sm:w-auto">
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider" data-i18n="player.quality_label">Kvalita a kodek streamu</span>
                             <div class="flex items-center gap-2 mt-1">
-                                <select id="player-quality-select" class="bg-slate-950 border border-slate-700 text-xs text-cyan-400 font-medium rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500">
-                                    <option value="auto">Auto (Adaptive Multi-Bitrate)</option>
-                                    <option value="best">Highest Available Bitrate (Force 4K/FHD)</option>
+                                <select id="player-quality-select" class="bg-slate-950 border border-slate-700 text-xs text-cyan-400 font-medium rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 flex-1 sm:flex-initial">
+                                    <option value="auto" data-i18n="player.quality_auto">Auto (Adaptivní kvalita)</option>
+                                    <option value="best" data-i18n="player.quality_best">Nejvyšší datový tok (Vynutit 4K/FHD)</option>
                                     <option value="1080p">1080p (Full HD)</option>
                                     <option value="720p">720p (HD)</option>
-                                    <option value="360p">360p (Data Saver)</option>
+                                    <option value="360p">360p (Úsporný režim)</option>
                                 </select>
-                                <span id="player-codec-badge" class="text-[11px] font-mono px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700/80">
+                                <span id="player-codec-badge" class="text-[11px] font-mono px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700/80 whitespace-nowrap">
                                     AVC / AAC
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
-                        <button id="btn-toggle-catchup" class="btn-secondary text-xs px-3 py-1.5 hidden" title="View past programs">
-                            <svg class="w-4 h-4 mr-1 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                            Catchup Archive
+                    <div class="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
+                        <button id="btn-toggle-catchup" class="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 hidden flex items-center" data-i18n-title="player.catchup_btn">
+                            <svg class="w-4 h-4 mr-1 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span data-i18n="player.catchup_btn">Archiv pořadů</span>
                         </button>
-                        <button id="btn-reload-stream" class="btn-secondary text-xs px-3 py-1.5" title="Reload current stream">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                            Reload
+                        <button id="btn-reload-stream" class="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 flex items-center" data-i18n-title="player.reload_btn">
+                            <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span data-i18n="player.reload_btn">Obnovit</span>
                         </button>
-                        <button id="btn-fullscreen-player" class="btn-secondary text-xs px-3 py-1.5" title="Toggle Fullscreen">
-                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-                            Fullscreen
+                        <button id="btn-fullscreen-player" class="btn-secondary text-xs px-2.5 sm:px-3 py-1.5 flex items-center" data-i18n-title="player.fullscreen_btn">
+                            <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                            <span data-i18n="player.fullscreen_btn">Celá obrazovka</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- Catchup Replay Drawer / Schedule List (Toggled via btn-toggle-catchup) -->
-                <div id="catchup-drawer" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3 animate-fade-in shadow-xl">
+                <!-- 7-Day Catchup Replay Drawer with Modern Day-Pill Tabs & Search Filter -->
+                <div id="catchup-drawer" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 animate-fade-in shadow-xl">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-white uppercase tracking-wider">⏪ 7-Day Catchup Replay Schedule</span>
-                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full">Archive Available</span>
+                            <span class="text-xs font-bold text-white uppercase tracking-wider" data-i18n="player.catchup_schedule">⏪ 7denní televizní archiv (Catchup)</span>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full" data-i18n="player.archive_available">Archiv dostupný</span>
                         </div>
-                        <button id="btn-close-catchup" class="text-slate-400 hover:text-white text-xs">Close &times;</button>
+                        <button id="btn-close-catchup" class="text-slate-400 hover:text-white text-xs px-2 py-1" data-i18n="player.close">Zavřít &times;</button>
                     </div>
+
+                    <!-- Day Selector Tabs & Live Filter -->
+                    <div class="space-y-2.5">
+                        <div id="catchup-day-tabs" class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                            <!-- Dynamically populated via player.js -->
+                        </div>
+                        <div class="relative">
+                            <input id="catchup-search-input" type="text" placeholder="Hledat v pořadech tohoto dne..." data-i18n-placeholder="epg.search_placeholder" class="w-full bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 rounded-xl px-3 py-2 pl-9 focus:outline-none focus:border-cyan-500">
+                            <svg class="w-4 h-4 text-slate-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </div>
+                    </div>
+
+                    <!-- Programs List for Active Day -->
                     <div id="catchup-programs-list" class="max-h-[30rem] overflow-y-auto space-y-2 pr-1">
                         <!-- Populated via JS -->
                     </div>
                 </div>
 
                 <!-- Now Playing / EPG Info Card -->
-                <div id="channel-now-playing-card" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
+                <div id="channel-now-playing-card" class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
                     <div class="flex items-start gap-4">
-                        <img id="active-channel-logo" src="" alt="Channel Logo" class="w-16 h-16 rounded-xl bg-slate-950 p-2 object-contain border border-slate-800 hidden">
+                        <img id="active-channel-logo" src="" alt="Channel Logo" class="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-950 p-2 object-contain border border-slate-800 hidden flex-shrink-0">
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 flex-wrap mb-1">
-                                <h3 id="active-channel-name" class="text-lg font-bold text-white truncate">No Channel Selected</h3>
+                                <h3 id="active-channel-name" class="text-base sm:text-lg font-bold text-white truncate" data-i18n="player.no_channel">Není vybrán žádný kanál</h3>
                                 <span id="active-channel-category" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-cyan-400 border border-slate-700 hidden"></span>
-                                <span id="active-channel-catchup" class="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 hidden">Catchup Available</span>
+                                <span id="active-channel-catchup" class="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 hidden" data-i18n="player.catchup_badge">Archiv dostupný</span>
                             </div>
 
                             <!-- Programme Info -->
                             <div id="active-channel-epg-box" class="mt-2 space-y-2">
                                 <div>
                                     <div class="flex items-center justify-between text-xs mb-1">
-                                        <span id="active-prog-title" class="font-semibold text-slate-200">Broadcast</span>
+                                        <span id="active-prog-title" class="font-semibold text-slate-200">Živé vysílání</span>
                                         <span id="active-prog-times" class="text-slate-400 font-mono">--:-- - --:--</span>
                                     </div>
                                     <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -145,7 +158,7 @@
                                 </div>
 
                                 <div id="active-next-prog-box" class="pt-2 border-t border-slate-800/60 flex items-center gap-2 text-xs text-slate-400 hidden">
-                                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Next</span>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded" data-i18n="player.next">Další</span>
                                     <span id="active-next-prog-title" class="truncate text-slate-300"></span>
                                 </div>
                             </div>
@@ -155,17 +168,17 @@
             </div>
 
             <!-- Channels Sidebar (4 cols on lg) -->
-            <div class="lg:col-span-4 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl h-[750px] overflow-hidden shadow-xl">
+            <div class="lg:col-span-4 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl h-[550px] lg:h-[750px] overflow-hidden shadow-xl">
                 <!-- Search & Filters Header -->
-                <div class="p-4 border-b border-slate-800 bg-slate-900/80 space-y-3">
+                <div class="p-3 sm:p-4 border-b border-slate-800 bg-slate-900/80 space-y-2.5">
                     <div class="relative">
                         <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                        <input id="channel-search-input" type="text" placeholder="Search channels..." class="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                        <input id="channel-search-input" type="text" placeholder="Hledat kanál..." data-i18n-placeholder="player.search_placeholder" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
                     </div>
 
                     <!-- Category Pills Horizontal Scroll -->
                     <div id="category-pills-container" class="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-                        <button class="cat-pill active" data-cat="all">All</button>
+                        <button class="cat-pill active" data-cat="all" data-i18n="category.all">Všechny</button>
                     </div>
                 </div>
 
@@ -173,7 +186,7 @@
                 <div id="channels-list" class="flex-1 overflow-y-auto p-3 space-y-2 divide-y divide-slate-800/40">
                     <!-- Populated dynamically via JS -->
                     <div class="text-center py-12 text-slate-500 text-xs">
-                        Loading channels...
+                        Načítám kanály...
                     </div>
                 </div>
             </div>
@@ -186,145 +199,145 @@
     <!-- ========================================================================= -->
     <div id="tab-links" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
-            <h2 class="text-xl font-bold text-white">IPTV Endpoints &amp; Integration Hub</h2>
-            <p class="text-xs text-slate-400 mt-1">Direct links for Kodi PVR IPTV Simple Client, TiviMate, OTT Navigator, VLC, Apple TV, and IPTV players.</p>
+            <h2 class="text-xl font-bold text-white" data-i18n="links.title">M3U playlisty, EPG a portálové odkazy</h2>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="links.subtitle">Předpřipravené adresy pro IPTV aplikace, Kodi, Smart TV a portály.</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             <!-- Card 1: Adaptive M3U Playlist -->
-            <div class="card p-6 flex flex-col justify-between">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
-                        <span class="badge-cyan">Recommended</span>
-                        <span class="text-xs text-slate-400">HLS Multi-Bitrate</span>
+                        <span class="badge-cyan">Doporučeno</span>
+                        <span class="text-xs text-slate-400" data-i18n="links.multi_bitrate">HLS Multi-Bitrate</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; Adaptive Quality</h3>
-                    <p class="text-xs text-slate-400 mb-4">Master playlist containing all available bitrates (4K UHD, 1080p, 720p). Your IPTV client automatically adapts or lets you pick quality.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.m3u_auto_title">M3U playlist • Adaptivní kvalita (Auto)</h3>
+                    <p class="text-xs text-slate-400 mb-4" data-i18n="links.m3u_auto_desc">Adaptivní master playlist. Automaticky upravuje rozlišení a datový tok podle rychlosti sítě.</p>
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
                         <input id="url-m3u-adaptive" type="text" readonly value="{{ base_url }}/playlist.m3u" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
-                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-adaptive">Copy URL</button>
-                        <a href="{{ base_url }}/playlist.m3u" download="sweettv.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-adaptive" data-i18n="links.copy_btn">Kopírovat URL</button>
+                        <a href="{{ base_url }}/playlist.m3u" download="sweettv.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
 
             <!-- Card 2: Highest Quality M3U Playlist -->
-            <div class="card p-6 flex flex-col justify-between">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
-                        <span class="badge-emerald">Ultra Quality</span>
-                        <span class="text-xs text-slate-400">Max Bitrate Forced</span>
+                        <span class="badge-emerald" data-i18n="links.ultra_quality">Ultra kvalita</span>
+                        <span class="text-xs text-slate-400" data-i18n="links.max_bitrate_forced">Maximální datový tok</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; Highest Bitrate (4K / 1080p)</h3>
-                    <p class="text-xs text-slate-400 mb-4">Forces the highest available bitrate and maximum resolution (up to 3840x2160 @ 17Mbps) directly on every channel stream.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.m3u_best_title">M3U playlist • Nejvyšší kvalita (Best)</h3>
+                    <p class="text-xs text-slate-400 mb-4" data-i18n="links.m3u_best_desc">Nastaví nejvyšší dostupný datový tok (4K UHD / 1080p FHD 50fps) na všech kanálech.</p>
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
                         <input id="url-m3u-best" type="text" readonly value="{{ base_url }}/playlist.m3u?quality=best" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
-                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-best">Copy URL</button>
-                        <a href="{{ base_url }}/playlist.m3u?quality=best" download="sweettv_best.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-best" data-i18n="links.copy_btn">Kopírovat URL</button>
+                        <a href="{{ base_url }}/playlist.m3u?quality=best" download="sweettv_best.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
 
             <!-- Card 3: XMLTV EPG (Standard & Gzip) -->
-            <div class="card p-6 flex flex-col justify-between">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
-                        <span class="badge-blue">Electronic Guide</span>
-                        <span class="text-xs text-slate-400">XMLTV Format</span>
+                        <span class="badge-blue" data-i18n="links.electronic_guide">Elektronický program</span>
+                        <span class="text-xs text-slate-400" data-i18n="links.xmltv_format">Formát XMLTV</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1">EPG Guide (XMLTV)</h3>
-                    <p class="text-xs text-slate-400 mb-4">Complete TV schedule with program names, times, catchup IDs, descriptions, and channel icons.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.epg_xmltv_title">EPG programový průvodce (XMLTV)</h3>
+                    <p class="text-xs text-slate-400 mb-4" data-i18n="links.epg_xmltv_desc">Kompletní televizní program s názvy, časy, popisy a ikonami kanálů.</p>
                 </div>
                 <div class="space-y-3">
                     <div>
-                        <label class="text-[11px] text-slate-400 block mb-1">Standard XML URL:</label>
+                        <label class="text-[11px] text-slate-400 block mb-1" data-i18n="links.std_xml_url">Běžná XML adresa:</label>
                         <input id="url-epg-xml" type="text" readonly value="{{ base_url }}/epg.xml" class="input-copy text-xs font-mono mb-2">
                         <div class="flex gap-2">
-                            <button class="btn-primary flex-1 text-xs py-1.5 btn-copy" data-target="url-epg-xml">Copy EPG URL</button>
-                            <a href="{{ base_url }}/epg.xml" target="_blank" class="btn-secondary text-xs py-1.5 px-3">View</a>
+                            <button class="btn-primary flex-1 text-xs py-1.5 btn-copy" data-target="url-epg-xml" data-i18n="links.copy_epg_btn">Kopírovat EPG URL</button>
+                            <a href="{{ base_url }}/epg.xml" target="_blank" class="btn-secondary text-xs py-1.5 px-3" data-i18n="links.view_btn">Zobrazit</a>
                         </div>
                     </div>
                     <div class="pt-2 border-t border-slate-800">
-                        <label class="text-[11px] text-slate-400 block mb-1">Compressed Gzip URL (Faster loading):</label>
+                        <label class="text-[11px] text-slate-400 block mb-1" data-i18n="links.gzip_xml_url">Komprimovaná GZIP adresa (rychlejší):</label>
                         <input id="url-epg-gz" type="text" readonly value="{{ base_url }}/epg.xml.gz" class="input-copy text-xs font-mono mb-2">
-                        <button class="btn-secondary w-full text-xs py-1.5 btn-copy" data-target="url-epg-gz">Copy Gzip URL</button>
+                        <button class="btn-secondary w-full text-xs py-1.5 btn-copy" data-target="url-epg-gz" data-i18n="links.copy_gzip_btn">Kopírovat Gzip URL</button>
                     </div>
                 </div>
             </div>
 
             <!-- Card 4: Catchup Replay Integration -->
-            <div class="card p-6 flex flex-col justify-between">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
-                        <span class="badge-purple">Archive &bull; Replay</span>
-                        <span class="text-xs text-slate-400">Kodi &amp; TiviMate</span>
+                        <span class="badge-purple" data-i18n="links.archive_replay">Archiv • Zpětné přehrávání</span>
+                        <span class="text-xs text-slate-400" data-i18n="links.kodi_tivimate">Kodi a TiviMate</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1">M3U Playlist &bull; With Catchup Tags</h3>
-                    <p class="text-xs text-slate-400 mb-4">Includes embedded <code class="code-inline">catchup="vod"</code> tags for Kodi PVR IPTV Simple Client and TiviMate to enable 7-day past broadcast replay.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.m3u_catchup_title">M3U playlist • S tagy pro televizní archiv</h3>
+                    <p class="text-xs text-slate-400 mb-4" data-i18n="links.m3u_catchup_desc">Obsahuje tagy pro zpětné přehrávání (až 7 dní) pro Kodi PVR a TiviMate.</p>
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
                         <input id="url-m3u-catchup" type="text" readonly value="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
-                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-catchup">Copy URL</button>
-                        <a href="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" download="sweettv_catchup.m3u8" class="btn-secondary text-xs py-2 px-3">Download</a>
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-catchup" data-i18n="links.copy_btn">Kopírovat URL</button>
+                        <a href="{{ base_url }}/playlist.m3u?quality=best&catchup=vod" download="sweettv_catchup.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
 
             <!-- Card 5: Clean Standalone M3U (No auto-epg header) -->
-            <div class="card p-6 flex flex-col justify-between">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between">
                 <div>
                     <div class="flex items-center justify-between mb-3">
-                        <span class="badge-emerald" data-i18n="links.m3u_clean_title">Universal Clean</span>
-                        <span class="text-xs text-slate-400">No Auto-EPG Trigger</span>
+                        <span class="badge-emerald" data-i18n="links.universal_clean">Univerzální čistý</span>
+                        <span class="text-xs text-slate-400" data-i18n="links.no_auto_epg">Bez auto-EPG požadavku</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.m3u_clean_title">M3U Playlist &bull; Clean Standalone</h3>
-                    <p class="text-xs text-slate-400 mb-4" data-i18n="links.m3u_clean_desc">Clean playlist without <code class="code-inline">url-tvg</code> header. Ideal for IPTV portals syncing channels independently of EPG.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.m3u_clean_title">M3U playlist • Čistý samostatný (bez auto-EPG)</h3>
+                    <p class="text-xs text-slate-400 mb-4" data-i18n="links.m3u_clean_desc">Čistý playlist bez url-tvg hlavičky. Ideální pro IPTV portály synchronizující kanály nezávisle na EPG.</p>
                 </div>
                 <div class="space-y-3">
                     <div class="relative">
                         <input id="url-m3u-clean" type="text" readonly value="{{ base_url }}/playlist_clean.m3u?quality=best" class="input-copy text-xs font-mono">
                     </div>
                     <div class="flex items-center gap-2">
-                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-clean" data-i18n="links.copy_btn">Copy URL</button>
-                        <a href="{{ base_url }}/playlist_clean.m3u?quality=best" download="sweettv_clean.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Download</a>
+                        <button class="btn-primary flex-1 text-xs py-2 btn-copy" data-target="url-m3u-clean" data-i18n="links.copy_btn">Kopírovat URL</button>
+                        <a href="{{ base_url }}/playlist_clean.m3u?quality=best" download="sweettv_clean.m3u8" class="btn-secondary text-xs py-2 px-3" data-i18n="links.download_btn">Stáhnout</a>
                     </div>
                 </div>
             </div>
 
             <!-- Card 6: Stalker / MAG Portal (Ministra Middleware) -->
-            <div class="card p-6 flex flex-col justify-between border-blue-500/40 bg-gradient-to-br from-slate-900 to-blue-950/30 md:col-span-2">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between border-blue-500/40 bg-gradient-to-br from-slate-900 to-blue-950/30 md:col-span-2">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500 text-white shadow-sm">⭐ Stalker / MAG Middleware</span>
                         <span class="text-xs text-blue-400 font-mono">Ministra / Stalker Protocol</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.stalker_title">Stalker / MAG Portal &bull; Ministra Middleware</h3>
-                    <p class="text-xs text-slate-300 mb-4" data-i18n="links.stalker_desc">Stalker portal emulation for MAG set-top boxes and IPTV apps. Loads channels, categories, and EPG via native JSON-RPC without M3U parsing.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.stalker_title">Stalker / MAG Portál • Ministra Middleware</h3>
+                    <p class="text-xs text-slate-300 mb-4" data-i18n="links.stalker_desc">Emulace Stalker portálu pro MAG set-top boxy a IPTV aplikace. Načítá kanály, kategorie a EPG přímo přes JSON-RPC bez parsování M3U.</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.portal_url">Portal URL:</span>
+                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.portal_url">URL Portálu:</span>
                         <div class="flex items-center justify-between">
                             <span class="font-mono text-blue-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}/c/</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}/c/">Copy</button>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}/c/" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.mac_address">MAC Address:</span>
+                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.mac_address">MAC adresa:</span>
                         <div class="flex items-center justify-between">
-                            <span class="font-mono text-blue-300 text-xs font-semibold select-all" data-i18n="links.mac_desc">Use your device's MAC</span>
+                            <span class="font-mono text-blue-300 text-xs font-semibold select-all" data-i18n="links.mac_desc">Použijte MAC vašeho zařízení</span>
                             <span class="text-[10px] text-slate-500 font-mono">Any MAC accepted</span>
                         </div>
                     </div>
@@ -332,35 +345,35 @@
             </div>
 
             <!-- Card 7: XTream Codes API (Native JSON) -->
-            <div class="card p-6 flex flex-col justify-between border-cyan-500/40 bg-gradient-to-br from-slate-900 to-cyan-950/30 md:col-span-2">
+            <div class="card p-5 sm:p-6 flex flex-col justify-between border-cyan-500/40 bg-gradient-to-br from-slate-900 to-cyan-950/30 md:col-span-2">
                 <div>
                     <div class="flex items-center justify-between mb-3">
                         <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-500 text-slate-950 shadow-sm">XTream Codes API</span>
                         <span class="text-xs text-cyan-400 font-mono">Xtream v2 Protocol</span>
                     </div>
-                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.xtream_title">XTream Codes Server &bull; Native JSON Connection</h3>
-                    <p class="text-xs text-slate-300 mb-4" data-i18n="links.xtream_desc">Connect via XTream Codes API in IPTV players. Native JSON eliminates M3U parsing bugs and loads 7-day EPG.</p>
+                    <h3 class="text-base font-bold text-white mb-1" data-i18n="links.xtream_title">XTream Codes Server • Nativní JSON připojení</h3>
+                    <p class="text-xs text-slate-300 mb-4" data-i18n="links.xtream_desc">Připojení přes XTream Codes API v IPTV aplikacích. Nativní JSON eliminuje chyby parsování a načítá 7denní EPG.</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.server_url">Server URL / Host:</span>
+                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.server_url">Server URL / Hostitel:</span>
                         <div class="flex items-center justify-between">
                             <span class="font-mono text-cyan-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}">Copy</button>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.username">Username:</span>
+                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.username">Uživatelské jméno:</span>
                         <div class="flex items-center justify-between">
                             <span class="font-mono text-cyan-300 text-xs font-semibold select-all" id="display-xtream-user">{{ xtream_user }}</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ xtream_user }}">Copy</button>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ xtream_user }}" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.password">Password:</span>
+                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.password">Heslo:</span>
                         <div class="flex items-center justify-between">
                             <span class="font-mono text-cyan-300 text-xs font-semibold select-all" id="display-xtream-pwd">{{ xtream_password }}</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ xtream_password }}">Copy</button>
+                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200" data-copy-url="{{ xtream_password }}" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                 </div>
@@ -374,64 +387,78 @@
     <!-- ========================================================================= -->
     <div id="tab-status" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
-            <h2 class="text-xl font-bold text-white">System Status &amp; Diagnostics</h2>
-            <p class="text-xs text-slate-400 mt-1">Real-time authentication lifecycle, API token countdown, and provider parameters.</p>
+            <h2 class="text-xl font-bold text-white" data-i18n="status.title">Stav systému a diagnostika</h2>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="status.subtitle">Stav přihlášení v reálném čase, odpočet platnosti tokenu a parametry poskytovatele.</p>
         </div>
 
         <!-- Metric Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div class="card p-5">
-                <span class="text-xs text-slate-400 font-medium">Sweet.tv Account</span>
+                <span class="text-xs text-slate-400 font-medium" data-i18n="status.account">Sweet.tv Účet</span>
                 <div id="status-card-account" class="text-lg font-bold text-white mt-1 flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> Checking...
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span> Ověřuji...
                 </div>
                 <span id="status-card-country" class="text-xs text-cyan-400 mt-2 block">Region: {{ country_code|upper }}</span>
             </div>
 
             <div class="card p-5">
-                <span class="text-xs text-slate-400 font-medium">Token Lifetime Remaining</span>
+                <span class="text-xs text-slate-400 font-medium" data-i18n="status.token">Platnost tokenu</span>
                 <div id="status-card-token-timer" class="text-lg font-bold text-amber-400 font-mono mt-1">
                     --:--:--
                 </div>
-                <span class="text-xs text-slate-400 mt-2 block">Auto-renews at 85% elapsed</span>
+                <span class="text-xs text-slate-400 mt-2 block">Automatická obnova při 85 %</span>
             </div>
 
             <div class="card p-5">
-                <span class="text-xs text-slate-400 font-medium">Total Live Channels</span>
+                <span class="text-xs text-slate-400 font-medium" data-i18n="status.channels">Celkem kanálů</span>
                 <div id="status-card-channels" class="text-lg font-bold text-white mt-1">
                     --
                 </div>
-                <span class="text-xs text-slate-400 mt-2 block">Includes HD, Ultra HD &amp; Free</span>
+                <span class="text-xs text-slate-400 mt-2 block">Včetně HD, 4K a volných stanic</span>
             </div>
 
             <div class="card p-5">
-                <span class="text-xs text-slate-400 font-medium">Server Version</span>
+                <span class="text-xs text-slate-400 font-medium">Verze serveru</span>
                 <div id="status-card-version" class="text-lg font-bold text-cyan-400 font-mono mt-1">
                     v{{ app_version }}
                 </div>
-                <a href="/api/version" target="_blank" class="text-xs text-slate-400 hover:text-cyan-300 mt-2 block underline">Check /api/version</a>
+                <a href="/api/version" target="_blank" class="text-xs text-slate-400 hover:text-cyan-300 mt-2 block underline">Ověřit /api/version</a>
             </div>
 
             <div class="card p-5">
-                <span class="text-xs text-slate-400 font-medium">Delivery Mode</span>
-                <div id="status-card-mode" class="text-lg font-bold text-emerald-400 mt-1">
-                    CDN Direct (302)
+                <span class="text-xs text-slate-400 font-medium" data-i18n="status.delivery">Přenos streamu</span>
+                <div id="status-card-mode" class="text-lg font-bold text-emerald-400 mt-1" data-i18n="status.direct_cdn">
+                    Přímé CDN 302
                 </div>
-                <span class="text-xs text-slate-400 mt-2 block">Zero server CPU &amp; bandwidth</span>
+                <span class="text-xs text-slate-400 mt-2 block">Nulové vytížení procesoru</span>
             </div>
         </div>
 
-        <!-- Device & Identity Details -->
-        <div class="card p-6">
-            <h3 class="text-sm font-bold text-white mb-4">Emulated Device Parameters</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <span class="text-slate-400 block mb-1">Virtual MAC Address:</span>
-                    <span class="text-cyan-400 select-all">{{ mac }}</span>
+        <!-- Sweet.tv Device Management & Identity Card -->
+        <div class="card p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div>
+                    <h3 class="text-sm font-bold text-white" data-i18n="status.device_mgmt_title">Správa zařízení Sweet.tv a párování</h3>
+                    <p class="text-xs text-slate-400 mt-0.5" data-i18n="status.device_mgmt_desc">Odpojte aktivní relaci nebo vygenerujte zcela novou identitu zařízení (nové UUID/MAC) pro uvolnění slotu na Sweet.tv.</p>
                 </div>
-                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <span class="text-slate-400 block mb-1">Device UUID:</span>
-                    <span class="text-cyan-400 select-all">{{ uuid }}</span>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button id="btn-status-disconnect" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors whitespace-nowrap">
+                        <span data-i18n="status.disconnect_btn">Odpojit účet</span>
+                    </button>
+                    <button id="btn-status-reset-device" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-semibold px-3.5 py-2 rounded-xl transition-colors whitespace-nowrap">
+                        <span data-i18n="status.reset_device_btn">Resetovat ID zařízení (nové UUID/MAC)</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 block mb-1" data-i18n="status.mac">Virtuální MAC adresa zařízení:</span>
+                    <span id="display-virtual-mac" class="text-cyan-400 select-all font-bold">{{ mac }}</span>
+                </div>
+                <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 block mb-1" data-i18n="status.uuid">UUID zařízení:</span>
+                    <span id="display-virtual-uuid" class="text-cyan-400 select-all font-bold">{{ uuid }}</span>
                 </div>
             </div>
         </div>
@@ -442,39 +469,39 @@
     <!-- ========================================================================= -->
     <div id="tab-settings" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
-            <h2 class="text-xl font-bold text-white">Server &amp; Stream Configuration</h2>
-            <p class="text-xs text-slate-400 mt-1">Customize language/region, external domain for Nginx Proxy Manager, and quality defaults.</p>
+            <h2 class="text-xl font-bold text-white" data-i18n="settings.title">Konfigurace serveru a streamování</h2>
+            <p class="text-xs text-slate-400 mt-1" data-i18n="settings.subtitle">Nastavení jazyka/regionu, veřejné domény pro Nginx Proxy Manager a výchozí kvality.</p>
         </div>
 
-        <div class="card p-6 max-w-2xl space-y-6">
+        <div class="card p-5 sm:p-6 max-w-2xl space-y-6">
             <form id="settings-form" class="space-y-4">
                 <!-- Country Code -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Country / Region Code</label>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.country_label">Země / Kód regionu</label>
                     <select id="setting-country-code" class="input-form">
-                        <option value="cs" {% if country_code == 'cs' %}selected{% endif %}>Czech Republic (cs)</option>
-                        <option value="sk" {% if country_code == 'sk' %}selected{% endif %}>Slovakia (sk)</option>
-                        <option value="hu" {% if country_code == 'hu' %}selected{% endif %}>Hungary (hu)</option>
-                        <option value="pl" {% if country_code == 'pl' %}selected{% endif %}>Poland (pl)</option>
-                        <option value="ro" {% if country_code == 'ro' %}selected{% endif %}>Romania (ro)</option>
-                        <option value="uk" {% if country_code == 'uk' %}selected{% endif %}>Ukraine (uk)</option>
+                        <option value="cs" {% if country_code == 'cs' %}selected{% endif %}>Česká republika (cs)</option>
+                        <option value="sk" {% if country_code == 'sk' %}selected{% endif %}>Slovensko (sk)</option>
+                        <option value="hu" {% if country_code == 'hu' %}selected{% endif %}>Maďarsko (hu)</option>
+                        <option value="pl" {% if country_code == 'pl' %}selected{% endif %}>Polsko (pl)</option>
+                        <option value="ro" {% if country_code == 'ro' %}selected{% endif %}>Rumunsko (ro)</option>
+                        <option value="uk" {% if country_code == 'uk' %}selected{% endif %}>Ukrajina (uk)</option>
                     </select>
-                    <p class="text-[11px] text-slate-400 mt-1">Changes the EPG language and region-specific channel packages.</p>
+                    <p class="text-[11px] text-slate-400 mt-1" data-i18n="settings.country_desc">Mění jazyk EPG průvodce a regionální balíčky kanálů.</p>
                 </div>
 
                 <!-- External URL (For NPM / Reverse Proxy) -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">External Domain / Public URL</label>
-                    <input id="setting-external-url" type="text" placeholder="https://tv.yourdomain.com" value="{{ external_url }}" class="input-form font-mono text-xs">
-                    <p class="text-[11px] text-slate-400 mt-1">Set this when running behind Nginx Proxy Manager (NPM) or public domain so M3U and EPG links use your public HTTPS domain.</p>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.ext_url_label">Veřejná doména / Veřejná URL adresa</label>
+                    <input id="setting-external-url" type="text" placeholder="https://tv.vasedomena.cz" value="{{ external_url }}" class="input-form font-mono text-xs">
+                    <p class="text-[11px] text-slate-400 mt-1" data-i18n="settings.ext_url_desc">Vyplňte při provozu za Nginx Proxy Managerem (NPM) nebo veřejnou doménou, aby odkazy používaly vaši HTTPS doménu.</p>
                 </div>
 
                 <!-- Default Playlist Quality -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Default Playlist Stream Quality</label>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.quality_label">Výchozí kvalita streamů v playlistu</label>
                     <select id="setting-default-quality" class="input-form">
-                        <option value="auto" {% if default_quality == 'auto' %}selected{% endif %}>Auto (Adaptive Multi-Bitrate Master Playlist)</option>
-                        <option value="best" {% if default_quality == 'best' %}selected{% endif %}>Highest Bitrate (Force 4K UHD / 1080p FHD)</option>
+                        <option value="auto" {% if default_quality == 'auto' %}selected{% endif %}>Auto (Adaptivní kvalita)</option>
+                        <option value="best" {% if default_quality == 'best' %}selected{% endif %}>Nejvyšší dostupná kvalita (Vynutit 4K/FHD)</option>
                         <option value="1080p" {% if default_quality == '1080p' %}selected{% endif %}>1080p (Full HD)</option>
                         <option value="720p" {% if default_quality == '720p' %}selected{% endif %}>720p (HD)</option>
                     </select>
@@ -482,24 +509,24 @@
 
                 <!-- Stream Delivery Mode -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Stream Delivery Technique</label>
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.delivery_label">Způsob předávání streamu</label>
                     <select id="setting-direct-redirect" class="input-form">
-                        <option value="true" {% if direct_redirect %}selected{% endif %}>Direct CDN 302 Redirect (Recommended: Best performance, 0 CPU, 0 bandwidth)</option>
-                        <option value="false" {% if not direct_redirect %}selected{% endif %}>Server Proxy Mode (Stream proxied through this server)</option>
+                        <option value="true" {% if direct_redirect %}selected{% endif %}>Přímé CDN 302 přesměrování (Doporučeno: 0 CPU, 0 bandwidth)</option>
+                        <option value="false" {% if not direct_redirect %}selected{% endif %}>Server Proxy režim (Stream prochází přes tento server)</option>
                     </select>
                 </div>
 
                 <!-- Xtream Codes API Credentials -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.xtream_user_label">Xtream API Username</label>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.xtream_user_label">Xtream API uživatelské jméno</label>
                         <input id="setting-xtream-user" type="text" value="{{ xtream_user }}" class="input-form font-mono text-xs">
-                        <p class="text-[11px] text-slate-400 mt-1" data-i18n="settings.xtream_user_desc">Username for Xtream Codes API players.</p>
+                        <p class="text-[11px] text-slate-400 mt-1" data-i18n="settings.xtream_user_desc">Uživatelské jméno pro přehrávače s podporou Xtream Codes API.</p>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.xtream_pwd_label">Xtream API Password</label>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="settings.xtream_pwd_label">Xtream API heslo</label>
                         <input id="setting-xtream-password" type="text" value="{{ xtream_password }}" class="input-form font-mono text-xs">
-                        <p class="text-[11px] text-slate-400 mt-1" data-i18n="settings.xtream_pwd_desc">Password for Xtream Codes API players.</p>
+                        <p class="text-[11px] text-slate-400 mt-1" data-i18n="settings.xtream_pwd_desc">Heslo pro přehrávače s podporou Xtream Codes API.</p>
                     </div>
                 </div>
 
@@ -508,26 +535,26 @@
                     <label class="flex items-start gap-3 cursor-pointer">
                         <input id="setting-m3u-catchup" type="checkbox" {% if m3u_catchup %}checked{% endif %} class="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0">
                         <div>
-                            <span class="text-xs font-semibold text-slate-200" data-i18n="settings.catchup_checkbox">Include Catchup Tags in Default M3U Playlist</span>
-                            <p class="text-[11px] text-slate-400 mt-0.5" data-i18n="settings.catchup_desc">When checked, catchup tags are added to default M3U links for 7-day replay.</p>
+                            <span class="text-xs font-semibold text-slate-200" data-i18n="settings.catchup_checkbox">Zahrnout tagy pro archiv (Catchup) ve výchozím M3U playlistu</span>
+                            <p class="text-[11px] text-slate-400 mt-0.5" data-i18n="settings.catchup_desc">Při zaškrtnutí budou do výchozího playlistu vloženy tagy pro 7denní archiv.</p>
                         </div>
                     </label>
                 </div>
 
                 <div class="pt-4 border-t border-slate-800 flex items-center justify-between">
-                    <button type="submit" class="btn-primary text-xs py-2 px-5" data-i18n="settings.save_btn">Save Configuration</button>
-                    <button type="button" id="btn-force-refresh-cache" class="btn-secondary text-xs py-2 px-4" data-i18n="settings.refresh_btn">Refresh Cache</button>
+                    <button type="submit" class="btn-primary text-xs py-2 px-5" data-i18n="settings.save_btn">Uložit nastavení</button>
+                    <button type="button" id="btn-force-refresh-cache" class="btn-secondary text-xs py-2 px-4" data-i18n="settings.refresh_btn">Obnovit mezipaměť</button>
                 </div>
             </form>
 
-            <!-- Disconnect Account -->
-            <div class="pt-6 border-t border-slate-800 flex items-center justify-between">
+            <!-- Disconnect Account Section in Settings -->
+            <div class="pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                    <h4 class="text-xs font-bold text-white">Sweet.tv Account Session</h4>
-                    <p class="text-[11px] text-slate-400">Disconnect your account and clear saved authentication tokens.</p>
+                    <h4 class="text-xs font-bold text-white">Relace účtu Sweet.tv</h4>
+                    <p class="text-[11px] text-slate-400">Odpojí váš účet a smaže uložené přístupové tokeny.</p>
                 </div>
-                <button id="btn-logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
-                    Disconnect
+                <button id="btn-logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-4 py-2 rounded-xl transition-colors whitespace-nowrap">
+                    Odpojit účet
                 </button>
             </div>
         </div>
@@ -538,91 +565,91 @@
     <!-- ========================================================================= -->
     <div id="tab-guides" class="tab-content hidden space-y-6">
         <div class="border-b border-slate-800 pb-4">
-            <h2 class="text-xl font-bold text-white">Setup Guides &amp; Deployment Documentation</h2>
-            <p class="text-xs text-slate-400 mt-1">Instructions for Nginx Proxy Manager (NPM), Kodi, TiviMate, VLC, and Portainer.</p>
+            <h2 class="text-xl font-bold text-white">Návody k nastavení a dokumentace</h2>
+            <p class="text-xs text-slate-400 mt-1">Pokyny pro Nginx Proxy Manager (NPM), Kodi, TiviMate, VLC a Portainer.</p>
         </div>
 
         <div class="space-y-6 max-w-4xl">
 
             <!-- Guide 1: Nginx Proxy Manager (NPM) -->
-            <div class="card p-6">
+            <div class="card p-5 sm:p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">
                         NPM
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">Exposing via Nginx Proxy Manager (NPM) &amp; Public IP</h3>
-                        <p class="text-xs text-slate-400">Access your M3U and EPG securely from anywhere on the internet.</p>
+                        <h3 class="text-base font-bold text-white">Zpřístupnění přes Nginx Proxy Manager (NPM) a veřejnou IP</h3>
+                        <p class="text-xs text-slate-400">Bezpečný přístup k M3U a EPG odkudkoliv z internetu.</p>
                     </div>
                 </div>
 
                 <div class="space-y-4 text-xs text-slate-300">
                     <p>
-                        With a Public IP and Nginx Proxy Manager (NPM), you can assign a domain (e.g., <code class="code-inline">tv.yourdomain.com</code>) with a free SSL certificate from Let's Encrypt.
+                        S veřejnou IP adresou a Nginx Proxy Managerem (NPM) můžete serveru přiřadit doménu (např. <code class="code-inline">tv.vasedomena.cz</code>) s bezplatným SSL certifikátem Let's Encrypt.
                     </p>
 
                     <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Step 1: Port Forwarding</span>
-                        <p class="text-slate-400">On your home router, forward external ports <code class="code-inline">80</code> and <code class="code-inline">443</code> to the local IP of your Nginx Proxy Manager host.</p>
+                        <span class="text-xs font-bold text-white block">Krok 1: Přesměrování portů (Port Forwarding)</span>
+                        <p class="text-slate-400">Na svém domácím routeru přesměrujte vnější porty <code class="code-inline">80</code> a <code class="code-inline">443</code> na lokální IP adresu serveru, kde běží Nginx Proxy Manager.</p>
                     </div>
 
                     <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Step 2: Add Proxy Host in NPM</span>
+                        <span class="text-xs font-bold text-white block">Krok 2: Přidání Proxy Hostu v NPM</span>
                         <ul class="list-disc list-inside space-y-1 text-slate-300">
-                            <li><strong>Domain Names:</strong> <code class="code-inline">tv.yourdomain.com</code></li>
+                            <li><strong>Domain Names:</strong> <code class="code-inline">tv.vasedomena.cz</code></li>
                             <li><strong>Scheme:</strong> <code class="code-inline">http</code></li>
-                            <li><strong>Forward Hostname / IP:</strong> Local IP of this server or container name (e.g. <code class="code-inline">sweettv-proxy</code> or <code class="code-inline">192.168.1.xxx</code>)</li>
+                            <li><strong>Forward Hostname / IP:</strong> Lokální IP tohoto serveru nebo název kontejneru (např. <code class="code-inline">sweettv-proxy</code> nebo <code class="code-inline">192.168.1.xxx</code>)</li>
                             <li><strong>Forward Port:</strong> <code class="code-inline">5000</code></li>
-                            <li><strong>Enable:</strong> <span class="text-cyan-400 font-semibold">Websockets Support</span> &bull; <span class="text-cyan-400 font-semibold">Block Common Exploits</span></li>
+                            <li><strong>Povolit:</strong> <span class="text-cyan-400 font-semibold">Websockets Support</span> &bull; <span class="text-cyan-400 font-semibold">Block Common Exploits</span></li>
                         </ul>
                     </div>
 
                     <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Step 3: SSL Certificate</span>
+                        <span class="text-xs font-bold text-white block">Krok 3: SSL Certifikát</span>
                         <ul class="list-disc list-inside space-y-1 text-slate-300">
-                            <li>Switch to the <strong>SSL</strong> tab in NPM.</li>
-                            <li>Select <strong>Request a new SSL Certificate</strong> (Let's Encrypt).</li>
-                            <li>Check <strong>Force SSL</strong> and <strong>HTTP/2 Support</strong>.</li>
+                            <li>Přejděte na záložku <strong>SSL</strong> v NPM.</li>
+                            <li>Zvolte <strong>Request a new SSL Certificate</strong> (Let's Encrypt).</li>
+                            <li>Zaškrtněte <strong>Force SSL</strong> a <strong>HTTP/2 Support</strong>.</li>
                         </ul>
                     </div>
 
                     <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                        <span class="text-xs font-bold text-white block">Step 4: Update External Domain in Settings</span>
-                        <p class="text-slate-400">Open the <a href="#" class="text-cyan-400 underline" onclick="switchTab('settings')">Settings Tab</a> above and set <strong>External Domain</strong> to <code class="code-inline">https://tv.yourdomain.com</code>. This ensures all generated M3U channel URLs and catchup links use your HTTPS domain!</p>
+                        <span class="text-xs font-bold text-white block">Krok 4: Nastavení veřejné domény v Nastavení</span>
+                        <p class="text-slate-400">Otevřete záložku <a href="#" class="text-cyan-400 underline" onclick="switchTab('settings')">Nastavení</a> výše a vyplňte <strong>Veřejná doména</strong> na <code class="code-inline">https://tv.vasedomena.cz</code>. Odkazy na M3U a EPG budou automaticky používat tuto HTTPS doménu!</p>
                     </div>
                 </div>
             </div>
 
             <!-- Guide 2: Kodi Setup -->
-            <div class="card p-6">
+            <div class="card p-5 sm:p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
                         Kodi
                     </div>
                     <div>
                         <h3 class="text-base font-bold text-white">Kodi (PVR IPTV Simple Client)</h3>
-                        <p class="text-xs text-slate-400">Full TV guide, logos, categories, and catchup replay in Kodi.</p>
+                        <p class="text-xs text-slate-400">Kompletní televizní program, loga, kategorie a 7denní archiv v Kodi.</p>
                     </div>
                 </div>
 
                 <div class="space-y-3 text-xs text-slate-300">
                     <ol class="list-decimal list-inside space-y-2">
-                        <li>Install <strong>PVR IPTV Simple Client</strong> in Kodi (Settings &rarr; Add-ons &rarr; Install from repository &rarr; PVR clients &rarr; PVR IPTV Simple Client).</li>
-                        <li>Open the add-on configuration &rarr; <strong>General</strong> tab:
-                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800">
-                                M3U Playlist URL: {{ base_url }}/playlist.m3u
+                        <li>Nainstalujte doplněk <strong>PVR IPTV Simple Client</strong> v Kodi (Nastavení &rarr; Doplňky &rarr; Instalovat z repozitáře &rarr; Klienti PVR &rarr; PVR IPTV Simple Client).</li>
+                        <li>V konfiguraci doplňku &rarr; záložka <strong>Obecné</strong>:
+                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800 select-all">
+                                URL seznamu M3U: {{ base_url }}/playlist.m3u
                             </div>
                         </li>
-                        <li>Switch to the <strong>EPG</strong> tab:
-                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800">
-                                XMLTV URL: {{ base_url }}/epg.xml.gz
+                        <li>Přejděte na záložku <strong>EPG</strong>:
+                            <div class="ml-5 mt-1 font-mono text-[11px] text-cyan-400 bg-slate-950 p-2 rounded-lg border border-slate-800 select-all">
+                                URL XMLTV: {{ base_url }}/epg.xml.gz
                             </div>
                         </li>
-                        <li>Switch to the <strong>Catchup</strong> tab:
+                        <li>Přejděte na záložku <strong>Zpětné zhlédnutí (Catchup)</strong>:
                             <ul class="list-disc list-inside ml-5 mt-1 text-slate-400 space-y-0.5">
-                                <li>Enable Catchup: <strong class="text-white">Yes</strong></li>
-                                <li>Catchup mode: <strong class="text-white">Default</strong> (or Append to URL)</li>
-                                <li>Query format: <code class="code-inline">{catchup-id}</code></li>
+                                <li>Povolit zpětné zhlédnutí: <strong class="text-white">Ano</strong></li>
+                                <li>Režim: <strong class="text-white">Výchozí</strong></li>
+                                <li>Formát dotazu: <code class="code-inline">{catchup-id}</code></li>
                             </ul>
                         </li>
                     </ol>
@@ -630,41 +657,41 @@
             </div>
 
             <!-- Guide 3: TiviMate / OTT Navigator -->
-            <div class="card p-6">
+            <div class="card p-5 sm:p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center font-bold">
                         TV
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">TiviMate &amp; Android TV Players</h3>
-                        <p class="text-xs text-slate-400">Best-in-class IPTV experience on Google TV, FireTV, and Shield.</p>
+                        <h3 class="text-base font-bold text-white">TiviMate a Android TV aplikace</h3>
+                        <p class="text-xs text-slate-400">Špičkový zážitek ze sledování na Google TV, FireTV a Nvidia Shield.</p>
                     </div>
                 </div>
 
                 <div class="space-y-3 text-xs text-slate-300">
                     <ol class="list-decimal list-inside space-y-2">
-                        <li>In TiviMate, go to <strong>Settings &rarr; Playlists &rarr; Add Playlist</strong>.</li>
-                        <li>Select <strong>M3U Playlist</strong> and enter the URL: <code class="code-inline">{{ base_url }}/playlist.m3u</code>.</li>
-                        <li>In the EPG section, enter the guide URL: <code class="code-inline">{{ base_url }}/epg.xml</code>.</li>
-                        <li>In Playlist options, ensure <strong>Catchup</strong> is set to <strong>Auto</strong> or <strong>Type: Xtream Codes / Flussonic / VOD</strong>.</li>
+                        <li>V TiviMate zvolte <strong>Nastavení &rarr; Playlisty &rarr; Přidat playlist</strong>.</li>
+                        <li>Vyberte <strong>M3U playlist</strong> a zadejte: <code class="code-inline select-all">{{ base_url }}/playlist.m3u</code>.</li>
+                        <li>V sekci EPG zadejte URL průvodce: <code class="code-inline select-all">{{ base_url }}/epg.xml</code>.</li>
+                        <li>V možnostech playlistu ověřte, že je <strong>Catchup</strong> nastaven na <strong>Auto</strong> nebo <strong>Typ: Xtream Codes / Flussonic / VOD</strong>.</li>
                     </ol>
                 </div>
             </div>
 
             <!-- Guide 4: Portainer / Docker Deployment -->
-            <div class="card p-6">
+            <div class="card p-5 sm:p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
                         Docker
                     </div>
                     <div>
                         <h3 class="text-base font-bold text-white">Docker Compose &amp; Portainer Stack</h3>
-                        <p class="text-xs text-slate-400">One-click stack deployment with persistent data volume.</p>
+                        <p class="text-xs text-slate-400">Nasazení kontejneru jedním kliknutím s perzistentním diskem.</p>
                     </div>
                 </div>
 
                 <div class="space-y-3 text-xs text-slate-300">
-                    <p>In Portainer, click <strong>Stacks &rarr; Add stack &rarr; Web editor</strong> and paste:</p>
+                    <p>V Portaineru klikněte na <strong>Stacks &rarr; Add stack &rarr; Web editor</strong> a vložte:</p>
                     <pre class="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-[11px] text-cyan-300 overflow-x-auto">version: '3.8'
 
 services:
@@ -678,9 +705,9 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=5000
-      - EXTERNAL_URL=https://tv.yourdomain.com  # Optional: your NPM public domain
-      - SWEETTV_COUNTRY_CODE=cs                # cs, sk, hu, pl, uk, ro
-      - DEFAULT_QUALITY=auto                   # auto, best, 1080p, 720p
+      - EXTERNAL_URL=https://tv.vasedomena.cz
+      - SWEETTV_COUNTRY_CODE=cs
+      - DEFAULT_QUALITY=auto
       - DIRECT_REDIRECT=true
     volumes:
       - sweettv_data:/app/data

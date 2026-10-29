@@ -433,14 +433,142 @@ function playCatchupProgram(prog) {
     videoEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// Load and Render 7-Day Catchup Replay Schedule
+// Catchup Programs Cache and Day Filter State
+let channelCatchupPrograms = [];
+let activeCatchupDateKey = "";
+const catchupDayTabsEl = document.getElementById("catchup-day-tabs");
+const catchupSearchInput = document.getElementById("catchup-search-input");
+
+function getDayKey(unixTimestamp) {
+    const d = new Date(unixTimestamp * 1000);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function formatDayTabLabel(unixTimestamp) {
+    const d = new Date(unixTimestamp * 1000);
+    const now = new Date();
+    const isCs = typeof currentLang === "undefined" || currentLang === "cs";
+
+    const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffDays = Math.round((nowDate - dDate) / (1000 * 60 * 60 * 24));
+    const dayMonth = `${d.getDate()}.${d.getMonth() + 1}.`;
+
+    if (diffDays === 0) {
+        return `${isCs ? "Dnes" : "Today"} (${dayMonth})`;
+    } else if (diffDays === 1) {
+        return `${isCs ? "Včera" : "Yesterday"} (${dayMonth})`;
+    } else {
+        const daysCs = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
+        const daysEn = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const dayName = isCs ? daysCs[d.getDay()] : daysEn[d.getDay()];
+        return `${dayName} (${dayMonth})`;
+    }
+}
+
+function renderCatchupDayTabs(uniqueDayKeys, timestampsMap) {
+    if (!catchupDayTabsEl) return;
+    let html = "";
+    uniqueDayKeys.forEach(key => {
+        const isActive = key === activeCatchupDateKey;
+        const sampleTs = timestampsMap[key] || 0;
+        const label = formatDayTabLabel(sampleTs);
+        html += `
+            <button type="button" class="catchup-day-tab px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                isActive
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/60 shadow-sm'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+            }" data-day="${key}">${label}</button>
+        `;
+    });
+    catchupDayTabsEl.innerHTML = html;
+
+    catchupDayTabsEl.querySelectorAll(".catchup-day-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+            const day = tab.getAttribute("data-day");
+            if (day && day !== activeCatchupDateKey) {
+                activeCatchupDateKey = day;
+                renderCatchupDayTabs(uniqueDayKeys, timestampsMap);
+                renderCatchupDayPrograms();
+            }
+        });
+    });
+}
+
+function renderCatchupDayPrograms() {
+    if (!catchupListEl) return;
+    const query = catchupSearchInput ? catchupSearchInput.value.trim().toLowerCase() : "";
+
+    let dayPrograms = channelCatchupPrograms.filter(p => getDayKey(p.start) === activeCatchupDateKey);
+    if (query) {
+        dayPrograms = dayPrograms.filter(p => (p.title && p.title.toLowerCase().includes(query)));
+    }
+
+    if (dayPrograms.length === 0) {
+        const noProgMsg = typeof t === "function" ? t("epg.no_programs_day") : "No schedule details available for this day.";
+        catchupListEl.innerHTML = `
+            <div class="text-center py-8 text-xs text-slate-400">
+                ${noProgMsg}
+            </div>
+        `;
+        return;
+    }
+
+    const isCs = typeof currentLang === "undefined" || currentLang === "cs";
+    const itemsHtml = [];
+
+    dayPrograms.forEach(prog => {
+        const timeRange = `${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)}`;
+        const durationMin = Math.round((prog.stop - prog.start) / 60);
+        const isCurrentlyPlayingThis = currentReplayProgram && currentReplayProgram.id === prog.id;
+
+        itemsHtml.push(`
+            <div class="catchup-item flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer group ${
+                isCurrentlyPlayingThis
+                    ? 'bg-cyan-950/40 border-cyan-600/80 text-cyan-300'
+                    : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/80 hover:border-slate-700'
+            }" data-prog-id="${prog.id}">
+                <div class="flex-1 min-w-0 pr-3">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-[11px] font-mono text-cyan-400 font-semibold">${timeRange}</span>
+                        <span class="text-[10px] text-slate-500 font-mono">${durationMin} min</span>
+                        ${isCurrentlyPlayingThis ? '<span class="text-[10px] font-bold text-amber-400 animate-pulse">PRÁVĚ HRAJE</span>' : ''}
+                    </div>
+                    <div class="text-xs font-medium text-white truncate group-hover:text-cyan-300">${prog.title}</div>
+                </div>
+                <button class="btn-secondary text-[11px] py-1.5 px-3 flex items-center gap-1.5 group-hover:border-cyan-500 flex-shrink-0">
+                    <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                    <span>${isCurrentlyPlayingThis ? (isCs ? 'Znovu' : 'Restart') : (isCs ? 'Přehrát' : 'Play')}</span>
+                </button>
+            </div>
+        `);
+    });
+
+    catchupListEl.innerHTML = itemsHtml.join("");
+
+    catchupListEl.querySelectorAll(".catchup-item").forEach(item => {
+        item.addEventListener("click", () => {
+            const progId = parseInt(item.getAttribute("data-prog-id"));
+            const prog = channelCatchupPrograms.find(p => p.id === progId);
+            if (prog) {
+                playCatchupProgram(prog);
+                renderCatchupDayPrograms();
+            }
+        });
+    });
+}
+
+// Load and Render 7-Day Catchup Replay Schedule with Day Tabs
 async function loadCatchupSchedule(channelId) {
     if (!catchupListEl) return;
 
     catchupListEl.innerHTML = `
         <div class="flex items-center justify-center py-8 text-xs text-slate-400 gap-2">
             <div class="inline-block animate-spin rounded-full h-4 w-4 border-2 border-cyan-400 border-t-transparent"></div>
-            <span>Loading 7-day replay archive schedule...</span>
+            <span>Načítám 7denní televizní archiv...</span>
         </div>
     `;
 
@@ -449,7 +577,7 @@ async function loadCatchupSchedule(channelId) {
         if (!res.ok) {
             catchupListEl.innerHTML = `
                 <div class="text-center py-6 text-xs text-slate-500">
-                    Failed to load EPG replay schedule.
+                    Chyba při načítání programového průvodce.
                 </div>
             `;
             return;
@@ -460,78 +588,43 @@ async function loadCatchupSchedule(channelId) {
 
         // Filter replayable past programs
         const replayable = programs.filter(p => p.can_replay && p.is_past);
-
-        // Sort descending: most recent first
         replayable.sort((a, b) => b.start - a.start);
+        channelCatchupPrograms = replayable;
 
-        if (replayable.length === 0) {
+        if (channelCatchupPrograms.length === 0) {
+            if (catchupDayTabsEl) catchupDayTabsEl.innerHTML = "";
             catchupListEl.innerHTML = `
                 <div class="text-center py-6 text-xs text-slate-500">
-                    No replayable archive recordings available for this channel right now.
+                    Pro tento kanál není v archivu k dispozici žádný záznam.
                 </div>
             `;
             return;
         }
 
-        let lastDateHeader = "";
-        const itemsHtml = [];
-
-        replayable.forEach(prog => {
-            const dateStr = formatProgrammeDate(prog.start);
-            if (dateStr !== lastDateHeader) {
-                lastDateHeader = dateStr;
-                itemsHtml.push(`
-                    <div class="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm py-1.5 px-3 rounded-lg text-[11px] font-bold text-cyan-400 border border-slate-800 shadow-sm flex items-center justify-between my-2">
-                        <span>📅 ${dateStr}</span>
-                        <span class="text-[10px] text-slate-400 font-mono font-normal">7-Day Archive</span>
-                    </div>
-                `);
+        // Collect unique day keys and sample timestamps
+        const uniqueDayKeys = [];
+        const timestampsMap = {};
+        channelCatchupPrograms.forEach(prog => {
+            const dKey = getDayKey(prog.start);
+            if (!uniqueDayKeys.includes(dKey)) {
+                uniqueDayKeys.push(dKey);
+                timestampsMap[dKey] = prog.start;
             }
-
-            const timeRange = `${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)}`;
-            const isCurrentlyPlayingThis = currentReplayProgram && currentReplayProgram.id === prog.id;
-
-            itemsHtml.push(`
-                <div class="catchup-item flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer group ${
-                    isCurrentlyPlayingThis
-                        ? 'bg-cyan-950/40 border-cyan-600/80 text-cyan-300'
-                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-800/80 hover:border-slate-700'
-                }" data-prog-id="${prog.id}">
-                    <div class="flex-1 min-w-0 pr-3">
-                        <div class="flex items-center gap-2 mb-1">
-                            <span class="text-[11px] font-mono text-cyan-400 font-semibold">${timeRange}</span>
-                            ${isCurrentlyPlayingThis ? '<span class="text-[10px] font-bold text-amber-400 animate-pulse">Now Playing</span>' : ''}
-                        </div>
-                        <div class="text-xs font-medium text-white truncate group-hover:text-cyan-300">${prog.title}</div>
-                    </div>
-                    <button class="btn-secondary text-[11px] py-1.5 px-3 flex items-center gap-1.5 group-hover:border-cyan-500 flex-shrink-0">
-                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
-                        <span>${isCurrentlyPlayingThis ? 'Restart' : 'Watch'}</span>
-                    </button>
-                </div>
-            `);
         });
 
-        catchupListEl.innerHTML = itemsHtml.join("");
+        // Set default active day to the newest day
+        if (!activeCatchupDateKey || !uniqueDayKeys.includes(activeCatchupDateKey)) {
+            activeCatchupDateKey = uniqueDayKeys[0];
+        }
 
-        // Attach click listeners to catchup items
-        catchupListEl.querySelectorAll(".catchup-item").forEach(item => {
-            item.addEventListener("click", () => {
-                const progId = parseInt(item.getAttribute("data-prog-id"));
-                const prog = replayable.find(p => p.id === progId);
-                if (prog) {
-                    playCatchupProgram(prog);
-                    // Re-render catchup list to update 'Now Playing' highlight
-                    loadCatchupSchedule(channelId);
-                }
-            });
-        });
+        renderCatchupDayTabs(uniqueDayKeys, timestampsMap);
+        renderCatchupDayPrograms();
 
     } catch (err) {
         console.error("Failed to load catchup schedule:", err);
         catchupListEl.innerHTML = `
             <div class="text-center py-6 text-xs text-red-400">
-                Network error loading replay schedule.
+                Chyba sítě při načítání archivu pořadů.
             </div>
         `;
     }
@@ -592,6 +685,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     document.exitFullscreen();
                 }
             }
+        });
+    }
+
+    // Catchup In-Day Program Filter
+    if (catchupSearchInput) {
+        let catchupSearchTimeout = null;
+        catchupSearchInput.addEventListener("input", () => {
+            clearTimeout(catchupSearchTimeout);
+            catchupSearchTimeout = setTimeout(renderCatchupDayPrograms, 100);
         });
     }
 

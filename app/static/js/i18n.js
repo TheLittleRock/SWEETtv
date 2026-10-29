@@ -1,6 +1,7 @@
 /**
  * Internationalization (i18n) for Sweet.tv IPTV Server & Web TV
  * Supports English (en) and Czech (cs) with localStorage persistence.
+ * Default language: Czech (cs).
  */
 
 const I18N = {
@@ -26,8 +27,10 @@ const I18N = {
     // Player
     "player.select_channel": "Select a Channel to Watch",
     "player.select_channel_desc": "Browse the channel list on the right and click any channel to start high-definition streaming.",
-    "player.buffering": "Buffering highest quality stream...",
+    "player.buffering": "Buffering stream...",
     "player.quality_label": "Stream Quality & Codec",
+    "player.quality_auto": "Auto (Adaptive Multi-Bitrate)",
+    "player.quality_best": "Highest Available Bitrate (Force 4K/FHD)",
     "player.catchup_btn": "Catchup Archive",
     "player.reload_btn": "Reload",
     "player.fullscreen_btn": "Fullscreen",
@@ -46,6 +49,25 @@ const I18N = {
     "player.live": "LIVE",
     "player.no_epg_found": "No schedule details available for this day.",
 
+    // EPG Catchup Day Tabs
+    "epg.today": "Today",
+    "epg.yesterday": "Yesterday",
+    "epg.search_placeholder": "Search programs on this day...",
+    "epg.play_recording": "Play Recording",
+    "epg.duration": "Duration",
+    "epg.no_programs_day": "No programs found for selected day.",
+
+    // Categories
+    "category.all": "All",
+    "category.favorites": "Favorites",
+    "category.national": "National",
+    "category.movies": "Movies",
+    "category.news": "News",
+    "category.sports": "Sports",
+    "category.documentary": "Documentary",
+    "category.kids": "Kids",
+    "category.music": "Music",
+
     // Links Tab
     "links.title": "Playlists, EPG & Integration URLs",
     "links.subtitle": "Pre-formatted URLs for IPTV players, Kodi, Smart TVs, and Portals.",
@@ -53,10 +75,13 @@ const I18N = {
     "links.m3u_best_desc": "Locks to the highest available bitrate (4K UHD / 1080p FHD 50fps) on all channels.",
     "links.m3u_auto_title": "M3U Playlist • Adaptive Auto",
     "links.m3u_auto_desc": "Adaptive bitrate master playlist. Adjusts resolution and bandwidth based on network speed.",
-    "links.epg_gz_title": "XMLTV EPG Guide • Gzip Compressed",
-    "links.epg_gz_desc": "Ultra-fast compressed electronic program guide. Recommended for Kodi, TiviMate, and mobile.",
-    "links.epg_xml_title": "XMLTV EPG Guide • Plain XML",
-    "links.epg_xml_desc": "Standard uncompressed XMLTV guide. Compatible with all players and IPTV apps.",
+    "links.epg_xmltv_title": "EPG Guide (XMLTV)",
+    "links.epg_xmltv_desc": "Complete TV schedule with program names, times, catchup IDs, descriptions, and channel icons.",
+    "links.std_xml_url": "Standard XML URL:",
+    "links.gzip_xml_url": "Compressed Gzip URL (Faster loading):",
+    "links.copy_epg_btn": "Copy EPG URL",
+    "links.copy_gzip_btn": "Copy Gzip URL",
+    "links.view_btn": "View",
     "links.m3u_catchup_title": "M3U Playlist • With Catchup Tags",
     "links.m3u_catchup_desc": "Includes embedded catchup replay tags for Kodi PVR and TiviMate to enable 7-day replay.",
     "links.m3u_clean_title": "M3U Playlist • Clean Standalone",
@@ -73,6 +98,15 @@ const I18N = {
     "links.portal_url": "Portal URL:",
     "links.mac_address": "MAC Address:",
     "links.mac_desc": "Use your device's MAC",
+    "links.universal_clean": "Universal Clean",
+    "links.ultra_quality": "Ultra Quality",
+    "links.max_bitrate_forced": "Max Bitrate Forced",
+    "links.electronic_guide": "Electronic Guide",
+    "links.xmltv_format": "XMLTV Format",
+    "links.archive_replay": "Archive • Replay",
+    "links.kodi_tivimate": "Kodi & TiviMate",
+    "links.no_auto_epg": "No Auto-EPG Trigger",
+    "links.multi_bitrate": "HLS Multi-Bitrate",
 
     // Status Tab
     "status.title": "System Status & Diagnostics",
@@ -89,7 +123,12 @@ const I18N = {
     "status.mac": "Device MAC:",
     "status.ext_url": "Configured Public URL:",
     "status.direct_stream": "Direct Stream Redirect:",
+    "status.device_mgmt_title": "Sweet.tv Device Management & Pairing",
+    "status.device_mgmt_desc": "Disconnect your account session or completely regenerate device credentials (UUID/MAC) to release the slot on Sweet.tv.",
     "status.disconnect_btn": "Disconnect Account",
+    "status.reset_device_btn": "Reset Device Identity (New UUID/MAC)",
+    "status.reset_device_confirm": "Are you sure you want to reset device identity? The active Sweet.tv session will be terminated and a brand new UUID and MAC address will be generated.",
+    "status.disconnect_confirm": "Are you sure you want to disconnect from your Sweet.tv account?",
 
     // Settings Tab
     "settings.title": "Server & Stream Configuration",
@@ -109,12 +148,19 @@ const I18N = {
     "settings.save_btn": "Save Configuration",
     "settings.refresh_btn": "Refresh Cache",
 
+    // Modals
+    "modal.auth_title": "Connect Sweet.tv Account",
+    "modal.auth_step1": "1. On your phone or computer, open:",
+    "modal.auth_step2": "2. Enter this 4-digit activation code:",
+    "modal.auth_waiting": "Waiting for confirmation in Sweet.tv app...",
+
     // Messages
     "msg.copied": "Copied to clipboard!",
     "msg.settings_saved": "Settings updated successfully!",
     "msg.settings_failed": "Failed to update settings.",
     "msg.cache_refreshed": "Channels and EPG cache refreshed!",
-    "msg.logged_out": "Account disconnected."
+    "msg.logged_out": "Account disconnected.",
+    "msg.device_reset": "Device identity reset successfully. Ready for new pairing."
   },
   cs: {
     // Navigace
@@ -138,8 +184,10 @@ const I18N = {
     // Přehrávač
     "player.select_channel": "Vyberte kanál pro sledování",
     "player.select_channel_desc": "Procházejte seznam stanic vpravo a klikněte na kanál pro spuštění přehrávání ve vysoké kvalitě.",
-    "player.buffering": "Načítám stream v nejvyšší kvalitě...",
+    "player.buffering": "Načítám stream...",
     "player.quality_label": "Kvalita a kodek streamu",
+    "player.quality_auto": "Auto (Adaptivní kvalita)",
+    "player.quality_best": "Nejvyšší datový tok (Vynutit 4K/FHD)",
     "player.catchup_btn": "Archiv pořadů",
     "player.reload_btn": "Obnovit",
     "player.fullscreen_btn": "Celá obrazovka",
@@ -158,6 +206,25 @@ const I18N = {
     "player.live": "ŽIVĚ",
     "player.no_epg_found": "Pro tento den nejsou k dispozici žádné pořady.",
 
+    // EPG Catchup Záložky dnů
+    "epg.today": "Dnes",
+    "epg.yesterday": "Včera",
+    "epg.search_placeholder": "Hledat v pořadech tohoto dne...",
+    "epg.play_recording": "Přehrát záznam",
+    "epg.duration": "Délka",
+    "epg.no_programs_day": "Pro vybraný den nebyly nalezeny žádné pořady.",
+
+    // Kategorie
+    "category.all": "Všechny",
+    "category.favorites": "Oblíbené",
+    "category.national": "Národní",
+    "category.movies": "Filmové",
+    "category.news": "Zpravodajské",
+    "category.sports": "Sportovní",
+    "category.documentary": "Dokumentární",
+    "category.kids": "Dětské",
+    "category.music": "Hudební",
+
     // Záložka Odkazy
     "links.title": "M3U playlisty, EPG a portálové odkazy",
     "links.subtitle": "Předpřipravené adresy pro IPTV aplikace, Kodi, Smart TV a portály.",
@@ -165,10 +232,13 @@ const I18N = {
     "links.m3u_best_desc": "Nastaví nejvyšší dostupný datový tok (4K UHD / 1080p FHD 50fps) na všech kanálech.",
     "links.m3u_auto_title": "M3U playlist • Adaptivní kvalita (Auto)",
     "links.m3u_auto_desc": "Adaptivní master playlist. Automaticky upravuje rozlišení a datový tok podle rychlosti sítě.",
-    "links.epg_gz_title": "XMLTV EPG programový průvodce (GZ)",
-    "links.epg_gz_desc": "Ultrarychlé komprimované EPG. Doporučeno pro Kodi, TiviMate a mobilní zařízení.",
-    "links.epg_xml_title": "XMLTV EPG programový průvodce (XML)",
-    "links.epg_xml_desc": "Standardní nekomprimovaný XMLTV průvodce. Kompatibilní se všemi IPTV přehrávači.",
+    "links.epg_xmltv_title": "EPG programový průvodce (XMLTV)",
+    "links.epg_xmltv_desc": "Kompletní televizní program s názvy, časy, popisy a ikonami kanálů.",
+    "links.std_xml_url": "Běžná XML adresa:",
+    "links.gzip_xml_url": "Komprimovaná GZIP adresa (rychlejší načítání):",
+    "links.copy_epg_btn": "Kopírovat EPG URL",
+    "links.copy_gzip_btn": "Kopírovat Gzip URL",
+    "links.view_btn": "Zobrazit",
     "links.m3u_catchup_title": "M3U playlist • S tagy pro televizní archiv",
     "links.m3u_catchup_desc": "Obsahuje tagy pro zpětné přehrávání (až 7 dní) pro Kodi PVR a TiviMate.",
     "links.m3u_clean_title": "M3U playlist • Čistý samostatný (bez auto-EPG)",
@@ -185,6 +255,15 @@ const I18N = {
     "links.portal_url": "URL Portálu:",
     "links.mac_address": "MAC adresa:",
     "links.mac_desc": "Použijte MAC vašeho zařízení",
+    "links.universal_clean": "Univerzální čistý",
+    "links.ultra_quality": "Ultra kvalita",
+    "links.max_bitrate_forced": "Maximální datový tok",
+    "links.electronic_guide": "Elektronický program",
+    "links.xmltv_format": "Formát XMLTV",
+    "links.archive_replay": "Archiv • Zpětné přehrávání",
+    "links.kodi_tivimate": "Kodi a TiviMate",
+    "links.no_auto_epg": "Bez auto-EPG požadavku",
+    "links.multi_bitrate": "HLS vícenásobný datový tok",
 
     // Záložka Stav
     "status.title": "Stav systému a diagnostika",
@@ -201,7 +280,12 @@ const I18N = {
     "status.mac": "MAC adresa zařízení:",
     "status.ext_url": "Nastavená veřejná URL:",
     "status.direct_stream": "Přímé přesměrování streamu:",
+    "status.device_mgmt_title": "Správa zařízení Sweet.tv a párování",
+    "status.device_mgmt_desc": "Odpojte aktivní relaci nebo vygenerujte zcela novou identitu zařízení (nové UUID/MAC) pro uvolnění slotu na Sweet.tv.",
     "status.disconnect_btn": "Odpojit účet",
+    "status.reset_device_btn": "Resetovat ID zařízení (nové UUID/MAC)",
+    "status.reset_device_confirm": "Opravdu chcete resetovat identitu zařízení? Stávající přihlášení na Sweet.tv bude ukončeno a server vygeneruje nové UUID a MAC adresu.",
+    "status.disconnect_confirm": "Opravdu se chcete odpojit od účtu Sweet.tv?",
 
     // Záložka Nastavení
     "settings.title": "Konfigurace serveru a streamování",
@@ -221,19 +305,26 @@ const I18N = {
     "settings.save_btn": "Uložit nastavení",
     "settings.refresh_btn": "Obnovit mezipaměť",
 
+    // Modální okna
+    "modal.auth_title": "Připojení k účtu Sweet.tv",
+    "modal.auth_step1": "1. Na mobilu nebo počítači otevřete:",
+    "modal.auth_step2": "2. Zadejte tento 4místný aktivační kód:",
+    "modal.auth_waiting": "Čekám na potvrzení v aplikaci Sweet.tv...",
+
     // Hlášení
     "msg.copied": "Zkopírováno do schránky!",
     "msg.settings_saved": "Nastavení bylo úspěšně uloženo!",
     "msg.settings_failed": "Chyba při ukládání nastavení.",
     "msg.cache_refreshed": "Mezipaměť kanálů a EPG byla obnovena!",
-    "msg.logged_out": "Účet byl odpojen."
+    "msg.logged_out": "Účet byl odpojen.",
+    "msg.device_reset": "Identita zařízení byla obnovena. Zobrazuji nový párovací kód."
   }
 };
 
 let currentLang = localStorage.getItem("sweettv_lang") || "cs";
 
 function t(key) {
-  const dict = I18N[currentLang] || I18N.en;
+  const dict = I18N[currentLang] || I18N.cs || I18N.en;
   return dict[key] || (I18N.en[key] || key);
 }
 
@@ -270,6 +361,15 @@ function setLanguage(lang) {
     const val = t(key);
     if (val) {
       el.setAttribute("placeholder", val);
+    }
+  });
+
+  // Update titles/tooltips of elements with data-i18n-title
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-title");
+    const val = t(key);
+    if (val) {
+      el.setAttribute("title", val);
     }
   });
 

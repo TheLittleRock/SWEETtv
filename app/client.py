@@ -197,6 +197,13 @@ class SweetTVClient:
         logger.info("Logged out from Sweet.tv.")
         return True
 
+    def reset_device_identity(self) -> Dict[str, str]:
+        """Logs out from Sweet.tv and generates fresh device UUID and MAC."""
+        self.logout()
+        new_ids = config.reset_device()
+        logger.info(f"Generated fresh device identity: UUID={new_ids['uuid']}, MAC={new_ids['mac']}")
+        return new_ids
+
     def get_channels(self, need_epg: bool = False, epg_limit_prev: int = 250, epg_limit_next: int = 50) -> Optional[Dict[str, Any]]:
         """Fetches channel list and optional EPG metadata (defaults to 250 past programs = full 7-day catchup)."""
         self.refresh_token()

@@ -281,3 +281,42 @@ video {
 .animate-fade-in {
     animation: fadeIn 0.15s ease-out forwards;
 }
+
+/* Quick Mode Switcher Segmented Control */
+.quick-mode-btn {
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+.quick-mode-btn.active {
+    background-color: #1e293b;
+    border-color: #334155;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Thin Scrollbar for Category & Day Pills */
+.scrollbar-thin::-webkit-scrollbar {
+    height: 4px;
+    width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 9999px;
+}
+.scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+
+/* Mobile Responsiveness Improvements */
+@media (max-width: 640px) {
+    header .min-h-16 {
+        min-height: 3.5rem;
+    }
+    .card {
+        padding: 1rem !important;
+        border-radius: 0.875rem;
+    }
+    .btn-primary, .btn-secondary {
+        font-size: 0.75rem;
+    }
+}

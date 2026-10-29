@@ -2,7 +2,7 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 import requests
 
 from app.client import client
@@ -270,20 +270,18 @@ def build_proxy_master_m3u8(
     # If the response from Sweet.tv is a media playlist (single stream or direct DVR catchup variant),
     # rewrite relative segment paths directly to absolute Sweet.tv CDN URLs!
     if not is_master:
-        parsed_master = urlparse(details.get("master_url", ""))
+        master_url = details.get("master_url", "")
         lines = master_content.splitlines()
         rewritten = []
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("/"):
-                # Absolute path on node CDN: turn into full URL
-                rewritten.append(f"{node_host}{stripped}")
-            elif not stripped.startswith("#") and stripped and not stripped.startswith("http"):
-                # Relative path: resolve against node_host and directory
-                parent = "/".join(parsed_master.path.split("/")[:-1])
-                rewritten.append(f"{node_host}{parent}/{stripped}")
-            else:
+            if not stripped:
+                continue
+            if stripped.startswith("#"):
                 rewritten.append(line)
+            else:
+                abs_segment = urljoin(master_url, stripped)
+                rewritten.append(abs_segment)
         return "\n".join(rewritten) + "\n", "application/vnd.apple.mpegurl"
 
     selected_quality = (quality or config.default_quality).lower().strip()
@@ -305,21 +303,29 @@ def build_proxy_master_m3u8(
             if v["height"] == target_height:
                 return build_proxy_variant_m3u8(v["url"], base_url)
 
-    # Rewrite master manifest lines
+    # Rewrite master manifest lines (Auto Adaptive Multi-Bitrate)
+    master_url = details.get("master_url", "")
     lines = master_content.splitlines()
     rewritten = []
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("http"):
-            encoded_url = quote(stripped, safe="")
-            rewritten.append(f"{base_url}/stream/variant.m3u8?url={encoded_url}")
-        elif stripped.startswith("/") and node_host:
-            # Relative DVR catchup variant path e.g. /dvr/abc...
-            full_url = f"{node_host}{stripped}"
-            encoded_url = quote(full_url, safe="")
-            rewritten.append(f"{base_url}/stream/variant.m3u8?url={encoded_url}")
-        else:
+        if not stripped:
+            continue
+        if stripped.startswith("#EXT-X-MEDIA:"):
+            # Rewrite URI="..." in audio/subs media tags if present
+            def _rewrite_media_uri(match):
+                raw_uri = match.group(1)
+                abs_media = urljoin(master_url, raw_uri)
+                enc = quote(abs_media, safe="")
+                return f'URI="{base_url}/stream/variant.m3u8?url={enc}"'
+            rewritten.append(re.sub(r'URI="([^"]+)"', _rewrite_media_uri, stripped))
+        elif stripped.startswith("#"):
             rewritten.append(line)
+        else:
+            # Variant stream URI: resolve against master_url and route through variant proxy
+            abs_variant_url = urljoin(master_url, stripped)
+            encoded_url = quote(abs_variant_url, safe="")
+            rewritten.append(f"{base_url}/stream/variant.m3u8?url={encoded_url}")
 
     return "\n".join(rewritten) + "\n", "application/vnd.apple.mpegurl"
 
@@ -344,22 +350,25 @@ def build_proxy_variant_m3u8(variant_url: str, base_url: str) -> Tuple[str, str]
             logger.error(f"Failed fetching variant {variant_url}: HTTP {r.status_code}")
             return "#EXTM3U\n", "application/vnd.apple.mpegurl"
 
-        parsed = urlparse(variant_url)
-        node_host = f"{parsed.scheme}://{parsed.netloc}"
-
         lines = r.text.splitlines()
         rewritten = []
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith("/"):
-                # Absolute path on node CDN: turn into full URL
-                rewritten.append(f"{node_host}{stripped}")
-            elif not stripped.startswith("#") and stripped and not stripped.startswith("http"):
-                # Relative path: resolve against node_host and directory
-                parent = "/".join(parsed.path.split("/")[:-1])
-                rewritten.append(f"{node_host}{parent}/{stripped}")
+            if not stripped:
+                continue
+            if stripped.startswith("#"):
+                if stripped.startswith("#EXT-X-KEY:") and 'URI="' in stripped:
+                    def _rewrite_key_uri(match):
+                        raw_kuri = match.group(1)
+                        abs_kurl = urljoin(variant_url, raw_kuri)
+                        return f'URI="{abs_kurl}"'
+                    rewritten.append(re.sub(r'URI="([^"]+)"', _rewrite_key_uri, stripped))
+                else:
+                    rewritten.append(line)
             else:
-                rewritten.append(line)
+                # Segment path: resolve against variant_url directly to absolute CDN URL
+                abs_segment_url = urljoin(variant_url, stripped)
+                rewritten.append(abs_segment_url)
 
         return "\n".join(rewritten) + "\n", "application/vnd.apple.mpegurl"
     except Exception as e:

@@ -105,6 +105,14 @@ def logout() -> Dict[str, Any]:
     return {"status": "OK", "logged": False}
 
 
+@router.post("/auth/reset-device")
+def reset_device() -> Dict[str, Any]:
+    """Terminates Sweet.tv session and regenerates UUID/MAC hardware identity."""
+    new_ids = client.reset_device_identity()
+    invalidate_cache()
+    return {"status": "OK", "logged": False, "uuid": new_ids["uuid"], "mac": new_ids["mac"]}
+
+
 @router.get("/channels")
 def get_channels_api() -> Dict[str, Any]:
     """Returns channel list formatted for the frontend player."""

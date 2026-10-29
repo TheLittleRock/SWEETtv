@@ -136,6 +136,23 @@ class ConfigManager:
         with self.lock:
             self._save_internal()
 
+    def reset_device(self) -> Dict[str, str]:
+        """Generates a fresh UUID and MAC address and clears authentication tokens."""
+        with self.lock:
+            new_uuid = str(uuid.uuid4())
+            new_mac = ":".join("%02x" % random.randint(0, 255) for _ in range(6))
+            self.data.update({
+                "uuid": new_uuid,
+                "mac": new_mac,
+                "logged": False,
+                "bearer": "",
+                "refresh_token": "",
+                "access_token_last_update": 0,
+                "access_token_lifetime": 0,
+            })
+            self._save_internal()
+            return {"uuid": new_uuid, "mac": new_mac}
+
     def get(self, key: str, default: Any = None) -> Any:
         with self.lock:
             return self.data.get(key, default)
