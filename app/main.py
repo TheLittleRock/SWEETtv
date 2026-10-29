@@ -56,12 +56,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Version header middleware for debugging & deployment verification
+# Version and security headers middleware for hardening and deployment verification
 @app.middleware("http")
-async def add_version_headers(request, call_next):
+async def add_security_headers(request, call_next):
     response = await call_next(request)
     response.headers["X-App-Version"] = APP_VERSION
     response.headers["X-Application"] = APP_NAME
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
     return response
 
 # Enable CORS for IPTV web players & browsers

@@ -1,13 +1,14 @@
 import logging
 import os
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import (
     SESSION_COOKIE_NAME,
     delete_session,
     get_current_user,
+    is_request_https,
 )
 from app.config import config
 from app.routes.iptv import get_effective_base_url
@@ -81,8 +82,21 @@ def logout_view(request: Request):
     if session_id:
         delete_session(session_id)
     response = RedirectResponse("/login", status_code=303)
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    is_secure = is_request_https(request)
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        path="/",
+        secure=is_secure,
+        httponly=True,
+        samesite="lax"
+    )
     return response
+
+
+@router.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt():
+    """Instructs web crawlers and search engine bots not to index this site."""
+    return "User-agent: *\nDisallow: /\n"
 
 
 @router.get("/health")

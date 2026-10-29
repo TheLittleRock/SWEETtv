@@ -4,6 +4,8 @@ import logging
 import os
 import secrets
 import sqlite3
+import time
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -455,6 +457,77 @@ def validate_token_or_session(
         status_code=401,
         detail="Unauthorized: Valid user token or session required."
     )
+
+
+# =========================================================================
+# SECURITY UTILITIES & BRUTE FORCE PROTECTION (RATE LIMITING)
+# =========================================================================
+
+def is_request_https(request: Request) -> bool:
+    """
+    Determines if the client request arrived over HTTPS, including reverse
+    proxies (Nginx, NPM, Caddy, Cloudflare).
+    """
+    if request.url.scheme == "https":
+        return True
+    if request.headers.get("x-forwarded-proto", "").lower() == "https":
+        return True
+    if request.headers.get("x-forwarded-ssl", "").lower() == "on":
+        return True
+    if request.headers.get("front-end-https", "").lower() == "on":
+        return True
+    return False
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Extracts true client IP address taking reverse proxies into account.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
+
+_LOGIN_FAILURES: Dict[str, List[float]] = defaultdict(list)
+_LOCKOUT_WINDOW = 300  # 5 minutes
+_MAX_FAILED_ATTEMPTS = 10  # 10 failed attempts before temporary lockout
+
+
+def check_login_rate_limit(client_ip: str) -> None:
+    """
+    Checks if client IP has exceeded max failed login attempts within lockout window.
+    Raises HTTP 429 Too Many Requests if rate limit is reached.
+    """
+    now = time.time()
+    attempts = [t for t in _LOGIN_FAILURES.get(client_ip, []) if now - t < _LOCKOUT_WINDOW]
+    _LOGIN_FAILURES[client_ip] = attempts
+
+    if len(attempts) >= _MAX_FAILED_ATTEMPTS:
+        retry_after = max(1, int(_LOCKOUT_WINDOW - (now - attempts[0])))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Příliš mnoho neúspěšných pokusů o přihlášení. Zkuste to za {retry_after} s.",
+            headers={"Retry-After": str(retry_after)}
+        )
+
+
+def record_login_failure(client_ip: str) -> None:
+    """Records a failed login attempt for the client IP."""
+    now = time.time()
+    attempts = [t for t in _LOGIN_FAILURES.get(client_ip, []) if now - t < _LOCKOUT_WINDOW]
+    attempts.append(now)
+    _LOGIN_FAILURES[client_ip] = attempts
+
+
+def reset_login_failures(client_ip: str) -> None:
+    """Clears failed login attempts for client IP upon successful login."""
+    _LOGIN_FAILURES.pop(client_ip, None)
 
 
 # Automatically initialize database schema on module load

@@ -95,7 +95,8 @@ def get_playlist(
     is_clean = is_bare or no_epg or request.url.path.endswith("playlist_clean.m3u")
     base_url = get_effective_base_url(request)
 
-    token_mode = "path" if token else "query"
+    is_path_token = request.url.path.startswith("/t/")
+    token_mode = "path" if is_path_token else "query"
     playlist_text = generate_m3u_playlist(
         base_url,
         quality=quality or config.default_quality,

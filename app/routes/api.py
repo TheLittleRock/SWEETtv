@@ -9,15 +9,20 @@ from app.auth import (
     User,
     authenticate_user,
     change_own_password,
+    check_login_rate_limit,
     create_session,
     create_user,
     delete_session,
     delete_user,
+    get_client_ip,
     get_current_user,
+    is_request_https,
     list_users,
+    record_login_failure,
     regenerate_token,
     require_admin,
     require_user,
+    reset_login_failures,
     update_user,
 )
 from app.client import client
@@ -76,10 +81,14 @@ class SettingsUpdate(BaseModel):
 # =========================================================================
 
 @router.post("/auth/login")
-def login_api(payload: LoginRequest, response: Response) -> Dict[str, Any]:
-    """Authenticates web user and establishes HTTP-Only session cookie."""
+def login_api(payload: LoginRequest, request: Request, response: Response) -> Dict[str, Any]:
+    """Authenticates web user and establishes HTTP-Only session cookie with brute-force protection."""
+    client_ip = get_client_ip(request)
+    check_login_rate_limit(client_ip)
+
     user = authenticate_user(payload.username, payload.password)
     if not user:
+        record_login_failure(client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Neplatné uživatelské jméno nebo heslo."
@@ -95,8 +104,12 @@ def login_api(payload: LoginRequest, response: Response) -> Dict[str, Any]:
             detail="Platnost tohoto uživatelského účtu vypršela."
         )
 
+    # Authentication succeeded, reset failed attempts
+    reset_login_failures(client_ip)
+
     days = 30 if payload.remember else 1
     session_id = create_session(user.id, days=days)
+    is_secure = is_request_https(request)
 
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -104,7 +117,7 @@ def login_api(payload: LoginRequest, response: Response) -> Dict[str, Any]:
         max_age=days * 86400,
         httponly=True,
         samesite="lax",
-        secure=False,  # Set to False to permit standard local HTTP; works transparently through HTTPS reverse proxies
+        secure=is_secure,
         path="/"
     )
 
@@ -126,7 +139,14 @@ def logout_api(request: Request, response: Response) -> Dict[str, Any]:
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id:
         delete_session(session_id)
-    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    is_secure = is_request_https(request)
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        path="/",
+        secure=is_secure,
+        httponly=True,
+        samesite="lax"
+    )
     return {"status": "OK"}
 
 
