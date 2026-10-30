@@ -52,11 +52,16 @@ class PasswordChangeRequest(BaseModel):
     new_password: str
 
 
+class StalkerMacRequest(BaseModel):
+    mac: Optional[str] = None
+
+
 class CreateUserRequest(BaseModel):
     username: str
     password: str
     role: str = "user"
     expires_at: Optional[str] = None
+    stalker_mac: Optional[str] = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -64,6 +69,7 @@ class UpdateUserRequest(BaseModel):
     is_active: Optional[bool] = None
     expires_at: Optional[str] = None
     new_password: Optional[str] = None
+    stalker_mac: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):
@@ -176,6 +182,20 @@ def regenerate_own_token_api(current_user: User = Depends(require_user)) -> Dict
     return {"status": "OK", "token": new_token}
 
 
+@router.post("/profile/stalker-mac")
+def update_own_stalker_mac_api(
+    payload: StalkerMacRequest,
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
+    """Allows authenticated user to register or clear their device MAC address."""
+    try:
+        raw_mac = payload.mac.strip() if payload.mac else ""
+        user = update_user(current_user.id, stalker_mac=raw_mac if raw_mac else None)
+        return {"status": "OK", "stalker_mac": user.stalker_mac if user else None}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # =========================================================================
 # USER MANAGEMENT (ADMIN ONLY)
 # =========================================================================
@@ -197,7 +217,8 @@ def create_user_api(
             username=payload.username,
             password=payload.password,
             role=payload.role,
-            expires_at=payload.expires_at or None
+            expires_at=payload.expires_at or None,
+            stalker_mac=payload.stalker_mac
         )
         return {
             "status": "OK",
@@ -206,6 +227,7 @@ def create_user_api(
                 "username": user.username,
                 "role": user.role,
                 "token": user.token,
+                "stalker_mac": user.stalker_mac,
                 "is_active": user.is_active,
                 "expires_at": user.expires_at,
             }
@@ -228,13 +250,23 @@ def update_user_api(
         if payload.role and payload.role.lower() != "admin":
             raise HTTPException(status_code=400, detail="Nelze odebrat administrátorská práva vlastnímu účtu.")
 
-    user = update_user(
-        user_id=user_id,
-        role=payload.role,
-        is_active=payload.is_active,
-        expires_at=payload.expires_at,
-        new_password=payload.new_password
-    )
+    update_kwargs: Dict[str, Any] = {
+        "user_id": user_id,
+        "role": payload.role,
+        "is_active": payload.is_active,
+        "expires_at": payload.expires_at,
+        "new_password": payload.new_password,
+    }
+    # Only update stalker_mac if field was explicitly present in request
+    raw_dict = payload.dict(exclude_unset=True)
+    if "stalker_mac" in raw_dict:
+        update_kwargs["stalker_mac"] = payload.stalker_mac
+
+    try:
+        user = update_user(**update_kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     if not user:
         raise HTTPException(status_code=404, detail="Uživatel nebyl nalezen.")
 
@@ -245,6 +277,7 @@ def update_user_api(
             "username": user.username,
             "role": user.role,
             "token": user.token,
+            "stalker_mac": user.stalker_mac,
             "is_active": user.is_active,
             "expires_at": user.expires_at,
         }

@@ -1,12 +1,22 @@
 import hashlib
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.auth import get_current_user, validate_token_or_session
+from app.auth import (
+    User,
+    get_current_user,
+    get_user_by_id,
+    get_user_by_stalker_mac,
+    get_user_by_token,
+    normalize_mac,
+    update_user,
+    validate_token_or_session,
+)
 from app.config import config
 from app.epg import get_cached_channels
 from app.routes.iptv import clean_id, get_effective_base_url
@@ -15,23 +25,79 @@ from app.version import APP_NAME, APP_VERSION
 logger = logging.getLogger("SweetTV.Routes.Stalker")
 router = APIRouter(tags=["Stalker / MAG Portal"])
 
+# In-memory store for STB handshake session tokens: token -> {user_id, mac, created_at}
+_stb_sessions: Dict[str, Dict[str, Any]] = {}
 
-def _extract_mac(request: Request, params: Dict[str, Any]) -> str:
-    """Extracts MAC address from cookies, headers, or query/form params."""
-    if "mac" in params and params["mac"]:
-        return str(params["mac"]).strip().lower()
 
-    cookie_mac = request.cookies.get("mac")
-    if cookie_mac:
-        return cookie_mac.strip().lower()
+def _save_stb_session(stb_token: str, user_id: int, mac: Optional[str] = None):
+    """Stores STB session token with timestamp and purges sessions older than 7 days."""
+    now = time.time()
+    expired = [k for k, v in _stb_sessions.items() if now - v.get("created_at", 0) > 7 * 86400]
+    for k in expired:
+        _stb_sessions.pop(k, None)
+    _stb_sessions[stb_token] = {
+        "user_id": user_id,
+        "mac": mac,
+        "created_at": now
+    }
 
+
+def _get_stb_session(stb_token: str) -> Optional[Dict[str, Any]]:
+    """Retrieves valid STB session token if not expired."""
+    sess = _stb_sessions.get(stb_token)
+    if sess:
+        if time.time() - sess.get("created_at", 0) <= 7 * 86400:
+            return sess
+        _stb_sessions.pop(stb_token, None)
+    return None
+
+
+def _extract_mac(request: Request, params: Dict[str, Any]) -> Optional[str]:
+    """
+    Extracts and normalizes MAC address from query/form params, cookies, or headers.
+    Returns canonical lowercase colon-separated format (e.g. '00:1a:79:0d:d6:c1') or None.
+    """
+    candidates = []
+
+    # 1. Query / Form parameters
+    for key in ("mac", "stb_mac", "device_id"):
+        val = params.get(key)
+        if val:
+            candidates.append(str(val))
+
+    # 2. Cookies
+    for key in ("mac", "stb_mac", "MAC"):
+        val = request.cookies.get(key)
+        if val:
+            candidates.append(val)
+
+    # 3. Custom Headers
+    for header in ("x-mac", "x-user-mac", "mac", "stb-mac"):
+        val = request.headers.get(header)
+        if val:
+            candidates.append(val)
+
+    # 4. Raw Cookie header search (in case of URL-encoding or non-standard format)
+    raw_cookie = request.headers.get("cookie", "")
+    if raw_cookie:
+        cookie_match = re.search(r"(?:^|;\s*)(?:mac|stb_mac)=([^;]+)", raw_cookie, re.IGNORECASE)
+        if cookie_match:
+            candidates.append(cookie_match.group(1))
+
+    # 5. Authorization header check (e.g. Bearer 00:1A:79:...)
     auth_header = request.headers.get("authorization", "")
-    if "bearer" in auth_header.lower():
+    if auth_header:
         parts = auth_header.split()
-        if len(parts) == 2:
-            return parts[1].strip()
+        if len(parts) == 2 and parts[0].lower() in ("bearer", "mac"):
+            candidates.append(parts[1])
 
-    return "00:1a:79:00:00:01"
+    # Validate candidates against MAC format
+    for cand in candidates:
+        norm = normalize_mac(cand)
+        if norm:
+            return norm
+
+    return None
 
 
 @router.api_route("/load.php", methods=["GET", "POST"])
@@ -52,7 +118,8 @@ async def stalker_load(request: Request, token: Optional[str] = None):
     """
     Core Stalker / Ministra Middleware API router.
     Emulates MAG set-top box load.php handler for Live TV, categories, EPG, and playback links.
-    Secured by user token (in URL path /t/{token}/... or query parameter ?token=...).
+    Secured by user token (in URL path /t/{token}/... or query parameter ?token=...)
+    or device MAC address registered to a user account.
     """
     params: Dict[str, Any] = dict(request.query_params)
     if request.method == "POST":
@@ -63,32 +130,81 @@ async def stalker_load(request: Request, token: Optional[str] = None):
         except Exception:
             pass
 
+    mac = _extract_mac(request, params)
     token_candidate = token or params.get("token") or params.get("t")
-    try:
-        user = validate_token_or_session(request, token_candidate)
-    except HTTPException as e:
-        logger.warning(f"Stalker authentication failed: {e.detail}")
+
+    user: Optional[User] = None
+
+    # 1. Authenticate via token in path / query parameter
+    if token_candidate:
+        user = get_user_by_token(str(token_candidate).strip())
+
+    # 2. Authenticate via previous STB handshake session token
+    if not user and token_candidate:
+        stb_sess = _get_stb_session(str(token_candidate).strip())
+        if stb_sess:
+            user = get_user_by_id(stb_sess["user_id"])
+
+    # 3. Authenticate via web browser session cookie
+    if not user:
+        user = get_current_user(request)
+
+    # 4. Authenticate via registered device MAC address
+    if not user and mac:
+        user = get_user_by_stalker_mac(mac)
+
+    # Validate user permissions if found
+    if user:
+        if not user.is_active:
+            logger.warning(f"Stalker access rejected: user '{user.username}' is disabled.")
+            return JSONResponse(
+                {"js": {"error": f"Authorization failed: Account '{user.username}' is disabled."}},
+                status_code=403
+            )
+        if user.is_expired():
+            logger.warning(f"Stalker access rejected: user '{user.username}' has expired.")
+            return JSONResponse(
+                {"js": {"error": f"Authorization failed: Account '{user.username}' has expired."}},
+                status_code=403
+            )
+
+        # Auto-bind MAC to this user if token-authorized and user has no MAC registered yet
+        if mac and not user.stalker_mac:
+            existing_owner = get_user_by_stalker_mac(mac)
+            if not existing_owner:
+                try:
+                    update_user(user.id, stalker_mac=mac)
+                    logger.info(f"Auto-bound MAC {mac} to user '{user.username}' upon authorized request.")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-bind MAC {mac}: {e}")
+
+    else:
+        # Neither token nor MAC matched a registered user
+        logger.warning(
+            f"Stalker authentication failed: MAC={mac or 'none'} is not registered and token={token_candidate or 'none'} is invalid."
+        )
         return JSONResponse(
             {
                 "js": {
-                    "error": f"Authorization failed: {e.detail}"
+                    "error": f"Authorization failed: MAC address '{mac or 'unknown'}' is not registered."
                 }
             },
-            status_code=e.status_code
+            status_code=401
         )
 
     req_type = str(params.get("type", "")).strip().lower()
     action = str(params.get("action", "")).strip().lower()
-    mac = _extract_mac(request, params)
+    effective_mac = mac or user.stalker_mac or "00:1a:79:00:00:01"
     base_url = get_effective_base_url(request)
 
-    logger.debug(f"Stalker API call: user={user.username}, type={req_type}, action={action}, mac={mac}")
+    logger.debug(f"Stalker API call: user={user.username}, type={req_type}, action={action}, mac={effective_mac}")
 
     # 1. STB Lifecycle Actions
     if req_type == "stb":
         if action == "handshake":
             salt = "12345678"
-            stb_token = hashlib.md5(f"{mac}:{salt}".encode("utf-8")).hexdigest()
+            stb_token = hashlib.md5(f"{effective_mac}:{salt}:{time.time()}".encode("utf-8")).hexdigest()
+            _save_stb_session(stb_token, user.id, effective_mac)
             return JSONResponse({
                 "js": {
                     "token": stb_token,
@@ -106,7 +222,7 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "status": "1",
                     "tariff_plan_name": "SweetTV Premium",
                     "account_number": str(1000 + user.id),
-                    "mac": mac,
+                    "mac": effective_mac,
                     "playback_buffer_bytes": 0,
                     "playback_buffer_size": 0,
                     "audio_out": 1,
@@ -125,19 +241,30 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 }
             })
 
-        elif action == "get_modules":
+        elif action in ("get_modules", "do_auth", "log", "set_volume"):
             return JSONResponse({
                 "js": {
                     "disabled": [],
                     "default": "itv"
+                } if action == "get_modules" else True
+            })
+
+        elif action == "get_localization":
+            return JSONResponse({
+                "js": {
+                    "locale": "cs_CZ.utf8",
+                    "tz": "Europe/Prague"
                 }
             })
 
-        elif action == "log":
-            return JSONResponse({"js": True})
-
         elif action == "get_epg_info":
             # Overview of EPG table
+            return JSONResponse({
+                "js": {
+                    "data": [],
+                    "total_items": 0
+                }
+            })
             return JSONResponse({
                 "js": {
                     "data": [],
@@ -326,6 +453,19 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 }
             })
 
+    # 4. Electronic Program Guide (EPG) Table
+    elif req_type == "epg":
+        if action == "get_simple_data_table":
+            return JSONResponse({
+                "js": {
+                    "total_items": 0,
+                    "max_page_items": 0,
+                    "selected_item": 0,
+                    "cur_page": 0,
+                    "data": []
+                }
+            })
+
     # Default fallback for unhandled actions to keep portal STBs stable
     return JSONResponse({"js": {}})
 
@@ -343,12 +483,17 @@ def stalker_portal_page(request: Request, token: Optional[str] = None):
     """Informational landing page when portal URL is visited directly in browser."""
     base_url = get_effective_base_url(request)
     portal_token = token or request.query_params.get("token") or request.query_params.get("t") or ""
+    user_mac = None
     if not portal_token:
         user = get_current_user(request)
         if user:
             portal_token = user.token
+            user_mac = user.stalker_mac
 
-    portal_url = f"{base_url}/t/{portal_token}/c/" if portal_token else f"{base_url}/t/&lt;váš-token&gt;/c/"
+    portal_url = f"{base_url}/c/"
+    token_url = f"{base_url}/t/{portal_token}/c/" if portal_token else f"{base_url}/t/&lt;váš-token&gt;/c/"
+    mac_display = user_mac or "Není nastavena"
+
     return HTMLResponse(content=f"""
     <!DOCTYPE html>
     <html lang="cs">
@@ -364,30 +509,33 @@ def stalker_portal_page(request: Request, token: Optional[str] = None):
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                height: 100vh;
+                min-height: 100vh;
                 margin: 0;
+                padding: 16px;
             }}
             .card {{
                 background: #1e293b;
                 border: 1px solid #334155;
                 border-radius: 16px;
                 padding: 32px;
-                max-width: 520px;
+                max-width: 540px;
                 text-align: center;
                 box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
             }}
             h1 {{ font-size: 22px; color: #38bdf8; margin-top: 0; }}
-            p {{ font-size: 14px; color: #94a3b8; line-height: 1.6; }}
+            p {{ font-size: 14px; color: #94a3b8; line-height: 1.6; margin: 8px 0; }}
+            .label {{ font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-top: 14px; display: block; }}
             .url-box {{
                 background: #0f172a;
                 border: 1px solid #0284c7;
                 border-radius: 8px;
-                padding: 12px 16px;
+                padding: 10px 14px;
                 font-family: monospace;
-                font-size: 15px;
+                font-size: 14px;
                 color: #38bdf8;
                 word-break: break-all;
-                margin: 20px 0;
+                margin: 6px 0 14px 0;
+                user-select: all;
             }}
             .badge {{
                 display: inline-block;
@@ -399,6 +547,16 @@ def stalker_portal_page(request: Request, token: Optional[str] = None):
                 border-radius: 20px;
                 margin-bottom: 12px;
             }}
+            .mac-box {{
+                background: #0f172a;
+                border: 1px solid #334155;
+                border-radius: 8px;
+                padding: 10px 14px;
+                font-family: monospace;
+                font-size: 14px;
+                color: #a5f3fc;
+                margin: 6px 0 14px 0;
+            }}
             a {{ color: #38bdf8; text-decoration: none; font-size: 13px; }}
             a:hover {{ text-decoration: underline; }}
         </style>
@@ -407,10 +565,18 @@ def stalker_portal_page(request: Request, token: Optional[str] = None):
         <div class="card">
             <span class="badge">STALKER / MAG PORTAL ACTIVE</span>
             <h1>SweetTV MAG Portal</h1>
-            <p>Tento server emuluje Stalker / MAG Middleware pro IPTV aplikace a set-top boxy (MAG250/322 a emulátory).</p>
+            <p>Tento server emuluje Stalker / MAG Middleware pro IPTV aplikace (IPTVnator, TiviMate) a fyzické set-top boxy (MAG250/254/322).</p>
+            
+            <span class="label">URL Portálu pro aplikace a set-top boxy:</span>
             <div class="url-box">{portal_url}</div>
-            <p>Vložte tuto adresu do nastavení <strong>Stalker portály</strong> ve vaší IPTV aplikaci nebo zařízení.</p>
-            <a href="/">← Zpět na webový přehrávač a správu</a>
+
+            <span class="label">Registrovaná MAC adresa vašeho účtu:</span>
+            <div class="mac-box">{mac_display}</div>
+
+            <p style="font-size: 12px; color: #64748b;">Aplikace a zařízení se ověřují přes MAC adresu. Svou MAC adresu můžete změnit ve webové administraci.</p>
+            <div style="margin-top: 20px;">
+                <a href="/">← Zpět na webový přehrávač a správu</a>
+            </div>
         </div>
     </body>
     </html>

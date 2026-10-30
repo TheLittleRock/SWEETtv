@@ -51,6 +51,7 @@ def index_view(request: Request):
             "user_role": user.role,
             "is_admin": user.is_admin,
             "user_token": user.token,
+            "user_stalker_mac": user.stalker_mac or "",
             "must_change_password": user.must_change_password,
             "xtream_user": user.username,
             "xtream_password": "••••••••",

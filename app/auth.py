@@ -33,6 +33,7 @@ class User:
     created_at: str
     last_login_at: Optional[str]
     must_change_password: bool
+    stalker_mac: Optional[str] = None
 
     def is_expired(self) -> bool:
         if not self.expires_at:
@@ -82,6 +83,23 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+import re
+from urllib.parse import unquote
+
+_UNSET = object()
+
+
+def normalize_mac(mac: Optional[str]) -> Optional[str]:
+    """Normalizes MAC address to canonical lowercase colon-separated format (00:1a:79:0d:d6:c1)."""
+    if not mac:
+        return None
+    raw = unquote(str(mac)).strip().lower()
+    cleaned = re.sub(r"[^0-9a-f]", "", raw)
+    if len(cleaned) == 12:
+        return ":".join(cleaned[i:i+2] for i in range(0, 12, 2))
+    return None
+
+
 def init_auth_db():
     """Initializes SQLite schema and ensures default admin account exists."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -97,7 +115,8 @@ def init_auth_db():
                 expires_at TEXT NULL,
                 created_at TEXT NOT NULL,
                 last_login_at TEXT NULL,
-                must_change_password INTEGER NOT NULL DEFAULT 0
+                must_change_password INTEGER NOT NULL DEFAULT 0,
+                stalker_mac TEXT UNIQUE NULL COLLATE NOCASE
             )
         """)
 
@@ -114,6 +133,16 @@ def init_auth_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)")
 
+        # Migration: ensure stalker_mac column exists on upgraded databases
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN stalker_mac TEXT NULL COLLATE NOCASE")
+            conn.commit()
+            logger.info("Migrated users table: added stalker_mac column.")
+        except sqlite3.OperationalError:
+            pass
+
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_stalker_mac ON users(stalker_mac)")
+
         # Check if any user exists
         cursor = conn.execute("SELECT COUNT(*) as count FROM users")
         count = cursor.fetchone()["count"]
@@ -125,18 +154,32 @@ def init_auth_db():
             hashed = hash_password(default_pass)
             token = secrets.token_hex(16)
             now_iso = datetime.utcnow().isoformat()
+            default_mac = "00:1a:79:0d:d6:c1"
 
             conn.execute("""
-                INSERT INTO users (username, password_hash, role, token, is_active, created_at, must_change_password)
-                VALUES (?, ?, 'admin', ?, 1, ?, ?)
-            """, (default_user, hashed, token, now_iso, 1 if is_default else 0))
+                INSERT INTO users (username, password_hash, role, token, is_active, created_at, must_change_password, stalker_mac)
+                VALUES (?, ?, 'admin', ?, 1, ?, ?, ?)
+            """, (default_user, hashed, token, now_iso, 1 if is_default else 0, default_mac))
             conn.commit()
             logger.info(f"Initialized default administrator account '{default_user}'. Default password used: {is_default}")
+        else:
+            # Pre-bind default device MAC for admin if currently unset
+            cursor = conn.execute("SELECT id, stalker_mac FROM users WHERE username = 'admin' OR role = 'admin' ORDER BY id ASC LIMIT 1")
+            admin_row = cursor.fetchone()
+            if admin_row and not admin_row["stalker_mac"]:
+                default_mac = "00:1a:79:0d:d6:c1"
+                taken = conn.execute("SELECT id FROM users WHERE stalker_mac = ? COLLATE NOCASE", (default_mac,)).fetchone()
+                if not taken:
+                    conn.execute("UPDATE users SET stalker_mac = ? WHERE id = ?", (default_mac, admin_row["id"]))
+                    conn.commit()
+                    logger.info(f"Pre-bound user #{admin_row['id']} (admin) to default device MAC {default_mac}.")
 
 
 def row_to_user(row: sqlite3.Row) -> Optional[User]:
     if not row:
         return None
+    keys = row.keys() if hasattr(row, "keys") else []
+    stalker_mac = row["stalker_mac"] if "stalker_mac" in keys else None
     return User(
         id=row["id"],
         username=row["username"],
@@ -148,7 +191,18 @@ def row_to_user(row: sqlite3.Row) -> Optional[User]:
         created_at=row["created_at"],
         last_login_at=row["last_login_at"],
         must_change_password=bool(row["must_change_password"]),
+        stalker_mac=stalker_mac,
     )
+
+
+def get_user_by_stalker_mac(mac: str) -> Optional[User]:
+    norm = normalize_mac(mac)
+    if not norm:
+        return None
+    with get_db_connection() as conn:
+        cursor = conn.execute("SELECT * FROM users WHERE stalker_mac = ? COLLATE NOCASE", (norm,))
+        return row_to_user(cursor.fetchone())
+
 
 
 def get_user_by_id(user_id: int) -> Optional[User]:
@@ -227,18 +281,28 @@ def create_user(
     username: str,
     password: str,
     role: str = "user",
-    expires_at: Optional[str] = None
+    expires_at: Optional[str] = None,
+    stalker_mac: Optional[str] = None
 ) -> User:
-    """Creates a new user with a unique token."""
+    """Creates a new user with a unique token and optional Stalker device MAC."""
     username = username.strip()
     if not username:
-        raise ValueError("Username cannot be empty.")
+        raise ValueError("Uživatelské jméno nesmí být prázdné.")
     if len(password) < 4:
-        raise ValueError("Password must be at least 4 characters long.")
+        raise ValueError("Heslo musí mít alespoň 4 znaky.")
 
     existing = get_user_by_username(username)
     if existing:
-        raise ValueError(f"User '{username}' already exists.")
+        raise ValueError(f"Uživatel '{username}' již existuje.")
+
+    norm_mac = None
+    if stalker_mac and stalker_mac.strip():
+        norm_mac = normalize_mac(stalker_mac)
+        if not norm_mac:
+            raise ValueError("Neplatný formát MAC adresy (očekáván formát 00:1A:79:xx:xx:xx).")
+        existing_mac = get_user_by_stalker_mac(norm_mac)
+        if existing_mac:
+            raise ValueError(f"MAC adresa '{norm_mac}' je již přiřazena uživateli '{existing_mac.username}'.")
 
     token = secrets.token_hex(16)
     hashed = hash_password(password)
@@ -247,9 +311,9 @@ def create_user(
 
     with get_db_connection() as conn:
         cursor = conn.execute("""
-            INSERT INTO users (username, password_hash, role, token, is_active, expires_at, created_at, must_change_password)
-            VALUES (?, ?, ?, ?, 1, ?, ?, 0)
-        """, (username, hashed, valid_role, token, expires_at, now_iso))
+            INSERT INTO users (username, password_hash, role, token, is_active, expires_at, created_at, must_change_password, stalker_mac)
+            VALUES (?, ?, ?, ?, 1, ?, ?, 0, ?)
+        """, (username, hashed, valid_role, token, expires_at, now_iso, norm_mac))
         user_id = cursor.lastrowid
         conn.commit()
 
@@ -262,9 +326,10 @@ def update_user(
     is_active: Optional[bool] = None,
     expires_at: Optional[str] = None,
     new_password: Optional[str] = None,
-    must_change_password: Optional[bool] = None
+    must_change_password: Optional[bool] = None,
+    stalker_mac: Any = _UNSET
 ) -> Optional[User]:
-    """Updates user fields."""
+    """Updates user fields, including device MAC address."""
     user = get_user_by_id(user_id)
     if not user:
         return None
@@ -287,6 +352,19 @@ def update_user(
     if must_change_password is not None:
         fields.append("must_change_password = ?")
         values.append(1 if must_change_password else 0)
+
+    if stalker_mac is not _UNSET:
+        if not stalker_mac or not str(stalker_mac).strip():
+            fields.append("stalker_mac = NULL")
+        else:
+            norm_mac = normalize_mac(str(stalker_mac))
+            if not norm_mac:
+                raise ValueError("Neplatný formát MAC adresy (očekáván formát 00:1A:79:xx:xx:xx).")
+            existing = get_user_by_stalker_mac(norm_mac)
+            if existing and existing.id != user_id:
+                raise ValueError(f"MAC adresa '{norm_mac}' je již přiřazena uživateli '{existing.username}'.")
+            fields.append("stalker_mac = ?")
+            values.append(norm_mac)
 
     if not fields:
         return user
@@ -346,6 +424,7 @@ def list_users() -> List[Dict[str, Any]]:
                 "username": row["username"],
                 "role": row["role"],
                 "token": row["token"],
+                "stalker_mac": row["stalker_mac"] if "stalker_mac" in row.keys() else None,
                 "is_active": bool(row["is_active"]),
                 "expires_at": row["expires_at"],
                 "created_at": row["created_at"],
@@ -452,6 +531,19 @@ def validate_token_or_session(
                 return user
         except Exception:
             pass
+
+    # Fallback to MAC address authentication (e.g. MAG/Stalker stream playback)
+    params = dict(request.query_params)
+    cookie_mac = request.cookies.get("mac") or request.cookies.get("stb_mac")
+    header_mac = request.headers.get("x-mac") or request.headers.get("mac")
+    param_mac = params.get("mac") or params.get("stb_mac")
+    candidate_mac = cookie_mac or header_mac or param_mac
+    if candidate_mac:
+        user = get_user_by_stalker_mac(candidate_mac)
+        if user:
+            if not user.can_access():
+                raise HTTPException(status_code=403, detail="Account is disabled or expired.")
+            return user
 
     raise HTTPException(
         status_code=401,

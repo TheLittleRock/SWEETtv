@@ -333,24 +333,25 @@
                         <span class="text-xs text-blue-400 font-mono">Ministra / Stalker Protocol</span>
                     </div>
                     <h3 class="text-base font-bold text-white mb-1" data-i18n="links.stalker_title">Stalker / MAG Portál • Ministra Middleware</h3>
-                    <p class="text-xs text-slate-300 mb-4" data-i18n="links.stalker_desc">Emulace Stalker portálu pro MAG set-top boxy a IPTV aplikace. Načítá kanály, kategorie a EPG přímo přes JSON-RPC bez parsování M3U.</p>
+                    <p class="text-xs text-slate-300 mb-3" data-i18n="links.stalker_desc">Emulace Stalker portálu pro MAG set-top boxy a IPTV aplikace (IPTVnator, TiviMate). Načítá kanály, kategorie a EPG přímo přes JSON-RPC bez parsování M3U.</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
                         <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.portal_url">URL Portálu:</span>
                         <div class="flex items-center justify-between">
-                            <span id="url-stalker-portal" class="font-mono text-blue-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}/t/{{ user_token }}/c/</span>
-                            <button type="button" id="btn-copy-stalker" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}/t/{{ user_token }}/c/" data-i18n="links.copy_btn">Kopírovat</button>
+                            <span id="url-stalker-portal" class="font-mono text-blue-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}/c/</span>
+                            <button type="button" id="btn-copy-stalker" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}/c/" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.mac_address">MAC adresa:</span>
+                        <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.mac_address">Registrovaná MAC adresa:</span>
                         <div class="flex items-center justify-between">
-                            <span class="font-mono text-blue-300 text-xs font-semibold select-all" data-i18n="links.mac_desc">Použijte MAC vašeho zařízení</span>
-                            <span class="text-[10px] text-slate-500 font-mono">Any MAC accepted</span>
+                            <span id="user-stalker-mac-display" class="font-mono text-blue-300 text-xs font-semibold truncate mr-2 select-all">{% if user_stalker_mac %}{{ user_stalker_mac }}{% else %}<span class="text-slate-500 italic">Není nastavena</span>{% endif %}</span>
+                            <button type="button" onclick="openProfileModal()" class="text-[10px] py-1 px-2.5 bg-blue-600/80 hover:bg-blue-600 rounded text-white flex-shrink-0 transition-colors">Upravit MAC</button>
                         </div>
                     </div>
                 </div>
+                <p class="text-[11px] text-slate-400 mt-3">💡 <strong>Tip pro IPTVnator / MAG:</strong> Do aplikace vložte URL portálu <code class="text-blue-300 font-mono">{{ base_url }}/c/</code> a nastavte výše uvedenou MAC adresu zařízení. Připojení se ověří automaticky.</p>
             </div>
 
             <!-- Card 7: XTream Codes API (Native JSON) -->
@@ -419,6 +420,7 @@
                             <th class="py-3 px-4" data-i18n="users.col_user">Uživatel</th>
                             <th class="py-3 px-4" data-i18n="users.col_role">Role</th>
                             <th class="py-3 px-4" data-i18n="users.col_token">M3U Token</th>
+                            <th class="py-3 px-4" data-i18n="users.col_stalker_mac">Stalker MAC</th>
                             <th class="py-3 px-4" data-i18n="users.col_status">Stav</th>
                             <th class="py-3 px-4" data-i18n="users.col_expires">Expirace</th>
                             <th class="py-3 px-4" data-i18n="users.col_last_login">Poslední aktivita</th>
@@ -427,7 +429,7 @@
                     </thead>
                     <tbody id="users-table-body" class="divide-y divide-slate-800/60 font-medium">
                         <tr>
-                            <td colspan="7" class="py-8 text-center text-slate-500">
+                            <td colspan="8" class="py-8 text-center text-slate-500">
                                 <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-cyan-500 border-t-transparent mb-2"></div>
                                 <p data-i18n="users.loading">Načítám uživatele...</p>
                             </td>
@@ -469,6 +471,11 @@
                         <input id="create-expires" type="date" class="input-form h-9 text-xs text-slate-300">
                         <span class="text-[10px] text-slate-500 block mt-0.5" data-i18n="users.expires_hint">Ponechte prázdné pro neomezenou platnost</span>
                     </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.mac_label">MAC adresa pro Stalker portál (volitelné)</label>
+                        <input id="create-mac" type="text" class="input-form h-9 text-xs font-mono" placeholder="např. 00:1A:79:0D:D6:C1">
+                        <span class="text-[10px] text-slate-500 block mt-0.5" data-i18n="users.mac_hint">Identifikátor zařízení pro IPTVnator a MAG boxy</span>
+                    </div>
 
                     <button type="submit" id="btn-save-new-user" class="btn-primary w-full py-2.5 text-xs font-bold rounded-xl mt-3">
                         <span data-i18n="users.create_submit">Vytvořit uživatele</span>
@@ -506,6 +513,11 @@
                     <div>
                         <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.expires_label">Datum expirace</label>
                         <input id="edit-expires" type="date" class="input-form h-9 text-xs text-slate-300">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.mac_label">MAC adresa pro Stalker portál (volitelné)</label>
+                        <input id="edit-mac" type="text" class="input-form h-9 text-xs font-mono" placeholder="např. 00:1A:79:0D:D6:C1">
+                        <span class="text-[10px] text-slate-500 block mt-0.5" data-i18n="users.mac_edit_hint">Ponechte prázdné pro smazání MAC adresy</span>
                     </div>
                     <div>
                         <label class="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1" data-i18n="users.reset_pwd_label">Nové heslo (ponechte prázdné pro zachování stávajícího)</label>

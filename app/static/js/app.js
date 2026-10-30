@@ -371,6 +371,33 @@ async function regenerateMyToken() {
     }
 }
 
+async function saveProfileMacFromModal() {
+    const input = document.getElementById("profile-mac-input");
+    if (!input) return;
+    const mac = input.value.trim();
+
+    try {
+        const res = await fetch("/api/profile/stalker-mac", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mac: mac })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(typeof t === "function" ? t("profile.mac_saved_success") : "MAC adresa pro Stalker portál byla úspěšně uložena!", "success");
+            input.value = data.stalker_mac || "";
+            const display = document.getElementById("user-stalker-mac-display");
+            if (display) {
+                display.innerHTML = data.stalker_mac ? data.stalker_mac : '<span class="text-slate-500 italic">Není nastavena</span>';
+            }
+        } else {
+            showToast(data.detail || "Chyba při ukládání MAC adresy.", "error");
+        }
+    } catch (e) {
+        showToast("Chyba spojení při ukládání MAC adresy.", "error");
+    }
+}
+
 // Admin User Management Controller
 let currentUsers = [];
 
@@ -424,6 +451,9 @@ function renderUsersTable(users) {
         }
 
         const maskedToken = u.token ? `${u.token.substring(0, 6)}••••••••` : "—";
+        const macStr = u.stalker_mac 
+            ? `<span class="font-mono text-cyan-300 font-semibold select-all">${u.stalker_mac}</span>` 
+            : `<span class="text-slate-500 italic">Nenastavena</span>`;
         let expiresStr = typeof t === "function" ? t("users.never_expires") : "Bez expirace";
         if (u.expires_at) {
             try {
@@ -458,6 +488,7 @@ function renderUsersTable(users) {
                         <button type="button" onclick="copyText('${u.token}', this)" class="text-slate-400 hover:text-white p-1" title="Kopírovat token">📋</button>
                     </div>
                 </td>
+                <td class="py-3 px-4">${macStr}</td>
                 <td class="py-3 px-4">${statusBadge}</td>
                 <td class="py-3 px-4 text-slate-400 text-[11px]">${expiresStr}</td>
                 <td class="py-3 px-4 text-slate-400 text-[11px]">${lastLoginStr}</td>
@@ -482,6 +513,8 @@ function openCreateUserModal() {
     if (modal) modal.classList.remove("hidden");
     const err = document.getElementById("create-user-error");
     if (err) err.classList.add("hidden");
+    const macInput = document.getElementById("create-mac");
+    if (macInput) macInput.value = "";
     document.getElementById("create-username")?.focus();
 }
 
@@ -506,6 +539,8 @@ function openEditUserModal(user) {
     document.getElementById("edit-is-active").checked = !!user.is_active;
     document.getElementById("edit-expires").value = user.expires_at ? user.expires_at.split("T")[0] : "";
     document.getElementById("edit-new-pwd").value = "";
+    const macInput = document.getElementById("edit-mac");
+    if (macInput) macInput.value = user.stalker_mac || "";
     document.getElementById("edit-user-error").classList.add("hidden");
     modal.classList.remove("hidden");
 }
@@ -786,13 +821,22 @@ document.addEventListener("DOMContentLoaded", () => {
             const password = document.getElementById("create-password").value;
             const role = document.getElementById("create-role").value;
             const expires = document.getElementById("create-expires").value || null;
+            const macInput = document.getElementById("create-mac");
+            const stalkerMac = macInput ? macInput.value.trim() : null;
             const errBox = document.getElementById("create-user-error");
 
             try {
                 const res = await fetch("/api/users", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ username, password, role, is_active: true, expires_at: expires })
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        role,
+                        is_active: true,
+                        expires_at: expires,
+                        stalker_mac: stalkerMac || null
+                    })
                 });
                 const data = await res.json();
                 if (res.ok) {
@@ -821,13 +865,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const isActive = document.getElementById("edit-is-active").checked;
             const expires = document.getElementById("edit-expires").value || null;
             const newPassword = document.getElementById("edit-new-pwd").value || null;
+            const macInput = document.getElementById("edit-mac");
+            const stalkerMac = macInput ? macInput.value.trim() : null;
             const errBox = document.getElementById("edit-user-error");
 
             try {
                 const res = await fetch(`/api/users/${id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ role, is_active: isActive, expires_at: expires, new_password: newPassword })
+                    body: JSON.stringify({
+                        role,
+                        is_active: isActive,
+                        expires_at: expires,
+                        new_password: newPassword,
+                        stalker_mac: stalkerMac
+                    })
                 });
                 const data = await res.json();
                 if (res.ok) {
