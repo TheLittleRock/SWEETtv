@@ -31,6 +31,6 @@ EXPOSE 5000
 VOLUME ["/app/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://127.0.0.1:5000/health || exit 1
+    CMD curl -f http://127.0.0.1:${PORT:-5000}/health || exit 1
 
 CMD ["python", "-m", "app.main"]
