@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -53,6 +53,105 @@ def _get_stb_session(stb_token: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _normalize_date_filter(val: Any) -> Optional[str]:
+    """Normalizes various client date query parameters into standard 'YYYY-MM-DD'."""
+    if not val:
+        return None
+    s = str(val).strip()
+    if not s or s.lower() in ("null", "none", "0", "undefined"):
+        return None
+    # Standard YYYY-MM-DD
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    # YYYY/MM/DD
+    if len(s) >= 10 and s[4] == "/" and s[7] == "/":
+        return s[:10].replace("/", "-")
+    # DD.MM.YYYY
+    if len(s) >= 10 and s[2] == "." and s[5] == ".":
+        parts = s[:10].split(".")
+        return f"{parts[2]}-{parts[1]}-{parts[0]}"
+    # Numeric timestamp
+    if s.isdigit():
+        try:
+            return time.strftime("%Y-%m-%d", time.localtime(int(s)))
+        except Exception:
+            pass
+    return s
+
+
+def _build_epg_info_data(params: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Constructs forward-looking EPG schedule grouped by channel ID:
+    {"<channel_id>": [{"id", "name", "descr", "start_timestamp", "stop_timestamp", ...}]}
+    Conforms to Ministra specification for type=itv&action=get_epg_info&period=<hours>.
+    """
+    period_hours_raw = params.get("period", 24)
+    try:
+        period_hours = int(period_hours_raw) if period_hours_raw else 24
+    except Exception:
+        period_hours = 24
+    period_sec = max(1, period_hours) * 3600
+
+    ch_id_raw = params.get("ch_id") or params.get("stream_id") or params.get("id")
+    target_cid = None
+    if ch_id_raw:
+        try:
+            target_cid = clean_id(str(ch_id_raw))
+        except Exception:
+            pass
+
+    data = get_cached_channels(need_epg=True) or {}
+    now = int(time.time())
+    period_end = now + period_sec
+
+    channels_data: Dict[str, List[Dict[str, Any]]] = {}
+
+    target_channels = [c for c in data.get("list", []) if (target_cid is None or c.get("id") == target_cid)]
+    for ch in target_channels:
+        c_id = ch.get("id")
+        c_id_str = str(c_id)
+        is_catchup = 1 if ch.get("catchup") else 0
+        catchup_days = int(ch.get("catchup_duration", 7) or 7) if is_catchup else 0
+        catchup_duration_sec = catchup_days * 86400
+
+        ch_programs = []
+        for p in ch.get("epg", []):
+            t_start = p.get("time_start", 0)
+            t_stop = p.get("time_stop", 0)
+            if not t_start or not t_stop:
+                continue
+
+            # Forward window: program ends after now and starts before period_end
+            if t_stop <= now or t_start >= period_end:
+                continue
+
+            prog_id = str(p.get("id") or f"{c_id}_{t_start}")
+            is_archive = 1 if (is_catchup and t_start <= now and (now - t_start) <= catchup_duration_sec) else 0
+
+            ch_programs.append({
+                "id": prog_id,
+                "epg_id": prog_id,
+                "name": p.get("text", ""),
+                "descr": p.get("description") or p.get("genre") or "",
+                "time": time.strftime("%H:%M", time.localtime(t_start)),
+                "time_to": time.strftime("%H:%M", time.localtime(t_stop)),
+                "duration": max(0, t_stop - t_start),
+                "t_start": t_start,
+                "t_stop": t_stop,
+                "start_timestamp": t_start,
+                "stop_timestamp": t_stop,
+                "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
+                "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
+                "mark_archive": is_archive,
+                "cmd": f"auto /media/archive/{c_id}/{prog_id}.mpg?utc={t_start}&lutc={t_stop}"
+            })
+
+        ch_programs.sort(key=lambda x: x["start_timestamp"])
+        channels_data[c_id_str] = ch_programs
+
+    return channels_data
+
+
 def _build_epg_items(
     params: Dict[str, Any],
     limit_window: bool = False,
@@ -70,6 +169,8 @@ def _build_epg_items(
             cid = clean_id(str(ch_id_raw))
         except Exception:
             pass
+
+    norm_date = _normalize_date_filter(date_filter)
 
     data = get_cached_channels(need_epg=True) or {}
     now = int(time.time())
@@ -97,8 +198,15 @@ def _build_epg_items(
             start_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start))
             stop_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop))
 
-            if date_filter and not (start_dt.startswith(date_filter) or stop_dt.startswith(date_filter)):
-                continue
+            if norm_date:
+                matches_date = (
+                    start_dt.startswith(norm_date) or
+                    stop_dt.startswith(norm_date) or
+                    time.strftime("%Y-%m-%d", time.localtime(t_start)) == norm_date or
+                    time.strftime("%Y-%m-%d", time.localtime(t_stop)) == norm_date
+                )
+                if not matches_date:
+                    continue
 
             prog_id = str(p.get("id") or f"{c_id}_{t_start}")
             is_archive = 1 if (is_catchup and t_start <= now and (now - t_start) <= catchup_duration_sec) else 0
@@ -121,6 +229,7 @@ def _build_epg_items(
                 "end": stop_dt,
                 "cur_playing": is_playing,
                 "mark_archive": is_archive,
+                "cmd": f"auto /media/archive/{c_id}/{prog_id}.mpg?utc={t_start}&lutc={t_stop}"
             })
 
     items.sort(key=lambda x: x["t_start"])
@@ -332,17 +441,6 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 }
             })
 
-        elif action in ("get_epg_info", "get_short_epg"):
-            items = _build_epg_items(params, limit_window=(action == "get_short_epg"))
-            if action == "get_short_epg":
-                return JSONResponse({"js": items})
-            return JSONResponse({
-                "js": {
-                    "data": items,
-                    "total_items": len(items)
-                }
-            })
-
     # 2. Account Information
     elif req_type == "account_info":
         if action == "get_main_info":
@@ -356,7 +454,183 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 }
             })
 
-    # 3. Live TV (ITV) Actions
+    # 3. Universal Action Handlers (create_link, get_epg_info, get_simple_data_table, get_short_epg)
+    # Handled uniformly across req_type == 'itv', 'tv_archive', 'epg', 'stb'
+    if action == "create_link":
+        raw_cmd = unquote(str(params.get("cmd", ""))).strip()
+        # Clean possible 'ffmpeg ' or 'auto ' prefix
+        for prefix in ("ffmpeg ", "auto "):
+            if raw_cmd.lower().startswith(prefix):
+                raw_cmd = raw_cmd[len(prefix):].strip()
+
+        cid = None
+        epg_id = None
+        utc_ts = None
+        lutc_ts = None
+
+        # 1. Check explicit channel ID parameters
+        for param_key in ("ch_id", "channel_id", "stream_id"):
+            if params.get(param_key):
+                try:
+                    cid = clean_id(str(params[param_key]))
+                    break
+                except Exception:
+                    pass
+
+        # 2. Check explicit program / archive parameters
+        for prog_key in ("archive_id", "program_id", "epg_id"):
+            val = params.get(prog_key)
+            if val and str(val).strip() and str(val).strip() not in ("0", "null", "undefined"):
+                epg_id = str(val).strip()
+                break
+
+        # 3. Check explicit timestamp parameters (utc, lutc)
+        for start_key in ("utc", "start", "timestamp", "time"):
+            if params.get(start_key):
+                utc_ts = safe_parse_timestamp(params.get(start_key))
+                if utc_ts:
+                    break
+
+        for end_key in ("lutc", "end", "stop"):
+            if params.get(end_key):
+                lutc_ts = safe_parse_timestamp(params.get(end_key))
+                if lutc_ts:
+                    break
+
+        # 4. Parse cmd string (e.g. /media/archive/851/12345.mpg?utc=... or /stream/851/12345.m3u8)
+        if raw_cmd:
+            if "?" in raw_cmd:
+                try:
+                    cmd_query = raw_cmd.split("?", 1)[1]
+                    parsed_cmd_qs = parse_qs(cmd_query)
+                    if not utc_ts:
+                        for qk in ("utc", "start", "timestamp", "time"):
+                            if qk in parsed_cmd_qs:
+                                utc_ts = safe_parse_timestamp(parsed_cmd_qs[qk][0])
+                                if utc_ts:
+                                    break
+                    if not lutc_ts:
+                        for qk in ("lutc", "end", "stop"):
+                            if qk in parsed_cmd_qs:
+                                lutc_ts = safe_parse_timestamp(parsed_cmd_qs[qk][0])
+                                if lutc_ts:
+                                    break
+                    if not epg_id:
+                        for qk in ("archive_id", "program_id", "epg_id"):
+                            if qk in parsed_cmd_qs and parsed_cmd_qs[qk][0] not in ("0", "null", "undefined"):
+                                epg_id = str(parsed_cmd_qs[qk][0]).strip()
+                                break
+                except Exception:
+                    pass
+
+            cmd_path = raw_cmd.split("?")[0].strip()
+
+            # Case A: /archive/{cid}/{epg_id}
+            arch_match = re.search(r"/archive/(\d+)(?:/(\d+))?", cmd_path)
+            if arch_match:
+                if not cid:
+                    cid = int(arch_match.group(1))
+                if arch_match.group(2) and not epg_id:
+                    epg_id = arch_match.group(2)
+
+            # Case B: /stream/{cid}/{epg_id} or /play/{cid}/{epg_id}
+            elif "/stream/" in cmd_path or "/play/" in cmd_path:
+                try:
+                    seg = cmd_path.split("/stream/")[-1].split("/play/")[-1]
+                    parts = seg.replace(".m3u8", "").split("/")
+                    if len(parts) >= 2:
+                        if not cid:
+                            cid = clean_id(parts[0])
+                        if not epg_id:
+                            epg_id = parts[1].strip()
+                    elif len(parts) == 1:
+                        if not cid:
+                            cid = clean_id(parts[0])
+                except Exception:
+                    pass
+
+            # Case C: /media/{cid}.mpg or /media/archive/{cid}/{epg_id}
+            elif "/media/" in cmd_path:
+                media_match = re.search(r"/media/(?:archive/)?(\d+)(?:/(\d+))?", cmd_path)
+                if media_match:
+                    if not cid:
+                        cid = int(media_match.group(1))
+                    if media_match.group(2) and not epg_id:
+                        epg_id = media_match.group(2)
+
+            # Case D: raw integer
+            elif cmd_path.isdigit() and not cid:
+                cid = int(cmd_path)
+
+        if not cid:
+            cid = 851
+
+        # 5. Resolve EPG ID from utc timestamp if epg_id not resolved yet
+        if not epg_id and utc_ts:
+            resolved = resolve_epg_id_from_utc(cid, utc_ts)
+            if resolved:
+                epg_id = str(resolved)
+
+        quality = config.default_quality
+
+        # Build query parameters preserving quality, utc, and lutc
+        qparts = []
+        if quality and quality != "auto":
+            qparts.append(f"quality={quality}")
+        if utc_ts:
+            qparts.append(f"utc={utc_ts}")
+        if lutc_ts:
+            qparts.append(f"lutc={lutc_ts}")
+
+        qs = f"?{'&'.join(qparts)}" if qparts else ""
+
+        if epg_id:
+            final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}/{epg_id}.m3u8{qs}"
+        elif utc_ts:
+            final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{qs}"
+        else:
+            final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{qs}"
+
+        return JSONResponse({
+            "js": {
+                "id": cid,
+                "cmd": final_stream_url,
+                "error": "",
+                "cached": 0
+            }
+        })
+
+    elif action == "get_epg_info":
+        epg_data = _build_epg_info_data(params)
+        return JSONResponse({
+            "js": {
+                "data": epg_data
+            }
+        })
+
+    elif action == "get_simple_data_table":
+        date_param = params.get("date")
+        items = _build_epg_items(params, limit_window=False, date_filter=date_param)
+        page = int(params.get("p", 1) or 1)
+        max_page_items = int(params.get("max_page_items", 120) or 120)
+        total_items = len(items)
+        start_idx = max(0, (page - 1) * max_page_items)
+        paged_data = items[start_idx : start_idx + max_page_items]
+        return JSONResponse({
+            "js": {
+                "total_items": total_items,
+                "max_page_items": max_page_items,
+                "selected_item": 0,
+                "cur_page": page,
+                "data": paged_data
+            }
+        })
+
+    elif action == "get_short_epg":
+        items = _build_epg_items(params, limit_window=True)
+        return JSONResponse({"js": items})
+
+    # 4. Live TV (ITV) Catalog & Categories
     elif req_type == "itv":
         if action == "get_genres":
             channel_data = get_cached_channels(need_epg=False) or {}
@@ -445,152 +719,6 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "selected_item": 0,
                     "cur_page": 1,
                     "data": stb_channels
-                }
-            })
-
-        elif action == "create_link":
-            raw_cmd = unquote(str(params.get("cmd", ""))).strip()
-            if raw_cmd.lower().startswith("ffmpeg "):
-                raw_cmd = raw_cmd[7:].strip()
-
-            cid = None
-            epg_id = None
-
-            # 1. Check explicit channel ID parameters
-            for param_key in ("ch_id", "channel_id", "stream_id"):
-                if params.get(param_key):
-                    try:
-                        cid = clean_id(str(params[param_key]))
-                        break
-                    except Exception:
-                        pass
-
-            # 2. Check explicit program / archive parameters
-            for prog_key in ("archive_id", "program_id", "epg_id"):
-                val = params.get(prog_key)
-                if val and str(val).strip() and str(val).strip() not in ("0", "null", "undefined"):
-                    epg_id = str(val).strip()
-                    break
-
-            # 3. Parse command path
-            if raw_cmd:
-                if "/archive/" in raw_cmd:
-                    arch_match = re.search(r"/archive/(\d+)(?:/(\d+))?", raw_cmd)
-                    if arch_match:
-                        if not cid:
-                            cid = int(arch_match.group(1))
-                        if arch_match.group(2) and not epg_id:
-                            epg_id = arch_match.group(2)
-                elif "/stream/" in raw_cmd or "/play/" in raw_cmd:
-                    try:
-                        seg = raw_cmd.split("/stream/")[-1].split("/play/")[-1]
-                        parts = seg.split("?")[0].split("/")
-                        if len(parts) >= 2:
-                            if not cid:
-                                cid = clean_id(parts[0])
-                            if not epg_id:
-                                epg_id = parts[1].replace(".m3u8", "").strip()
-                        else:
-                            if not cid:
-                                cid = clean_id(parts[0])
-                    except Exception:
-                        pass
-                elif raw_cmd.isdigit() and not cid:
-                    cid = int(raw_cmd)
-
-            if not cid:
-                cid = 851
-
-            # 4. Parse timestamp/utc for catchup timeshift if epg_id not resolved yet
-            utc_candidate = params.get("timestamp") or params.get("utc") or params.get("start") or params.get("time")
-            utc_ts = None
-            if utc_candidate:
-                utc_ts = safe_parse_timestamp(utc_candidate)
-
-            if not epg_id and utc_ts:
-                resolved = resolve_epg_id_from_utc(cid, utc_ts)
-                if resolved:
-                    epg_id = str(resolved)
-
-            quality = config.default_quality
-            q_param = f"?quality={quality}" if quality and quality != "auto" else ""
-
-            if epg_id:
-                final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}/{epg_id}.m3u8{q_param}"
-            elif utc_ts:
-                sep = "&" if q_param else "?"
-                final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{q_param}{sep}utc={utc_ts}"
-            else:
-                final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{q_param}"
-
-            return JSONResponse({
-                "js": {
-                    "id": cid,
-                    "cmd": final_stream_url,
-                    "error": "",
-                    "cached": 0
-                }
-            })
-
-        elif action == "get_short_epg":
-            items = _build_epg_items(params, limit_window=True)
-            return JSONResponse({"js": items})
-
-        elif action == "get_epg_info":
-            items = _build_epg_items(params, limit_window=False)
-            return JSONResponse({
-                "js": {
-                    "total_items": len(items),
-                    "data": items
-                }
-            })
-
-        elif action == "get_simple_data_table":
-            date_filter = str(params.get("date", "")).strip() or None
-            items = _build_epg_items(params, limit_window=False, date_filter=date_filter)
-            page = int(params.get("p", 1) or 1)
-            max_page_items = int(params.get("max_page_items", 100) or 100)
-            total_items = len(items)
-            start_idx = max(0, (page - 1) * max_page_items)
-            paged_data = items[start_idx : start_idx + max_page_items]
-            return JSONResponse({
-                "js": {
-                    "total_items": total_items,
-                    "max_page_items": max_page_items,
-                    "selected_item": 0,
-                    "cur_page": page,
-                    "data": paged_data
-                }
-            })
-
-    # 4. Electronic Program Guide (EPG) Table
-    elif req_type == "epg":
-        if action == "get_simple_data_table":
-            date_filter = str(params.get("date", "")).strip() or None
-            items = _build_epg_items(params, limit_window=False, date_filter=date_filter)
-            page = int(params.get("p", 1) or 1)
-            max_page_items = int(params.get("max_page_items", 100) or 100)
-            total_items = len(items)
-            start_idx = max(0, (page - 1) * max_page_items)
-            paged_data = items[start_idx : start_idx + max_page_items]
-            return JSONResponse({
-                "js": {
-                    "total_items": total_items,
-                    "max_page_items": max_page_items,
-                    "selected_item": 0,
-                    "cur_page": page,
-                    "data": paged_data
-                }
-            })
-        elif action == "get_short_epg":
-            items = _build_epg_items(params, limit_window=True)
-            return JSONResponse({"js": items})
-        elif action == "get_epg_info":
-            items = _build_epg_items(params, limit_window=False)
-            return JSONResponse({
-                "js": {
-                    "total_items": len(items),
-                    "data": items
                 }
             })
 

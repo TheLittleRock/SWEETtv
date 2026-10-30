@@ -164,9 +164,10 @@ def test_stalker_mac_auth():
     assert isinstance(short_epg_data["js"], list)
     print("✓ get_short_epg returned valid array structure.")
 
-    # Test simple data table EPG
+    # Test simple data table EPG (type=epg&action=get_simple_data_table)
+    today_str = time.strftime("%Y-%m-%d")
     epg_table_resp = client.get(
-        f"/stalker_portal/server/load.php?type=epg&action=get_simple_data_table&ch_id=851&token={stb_token}",
+        f"/stalker_portal/server/load.php?type=epg&action=get_simple_data_table&ch_id=851&date={today_str}&p=1&token={stb_token}",
         cookies={"mac": "00:1A:79:0D:D6:C1"}
     )
     assert epg_table_resp.status_code == 200
@@ -174,8 +175,55 @@ def test_stalker_mac_auth():
     assert "js" in epg_table_data
     assert "total_items" in epg_table_data["js"]
     assert "data" in epg_table_data["js"]
-    assert isinstance(epg_table_data["js"]["data"], list)
-    print("✓ get_simple_data_table returned valid EPG table structure.")
+    table_items = epg_table_data["js"]["data"]
+    assert isinstance(table_items, list)
+    assert len(table_items) >= 1
+    p0 = table_items[0]
+    assert "start_timestamp" in p0
+    assert "stop_timestamp" in p0
+    assert "mark_archive" in p0
+    assert p0["mark_archive"] == 1, "Past catchup program must have mark_archive: 1"
+    assert "cmd" in p0
+    print(f"✓ get_simple_data_table verified: {len(table_items)} items, mark_archive={p0['mark_archive']}, start_timestamp={p0['start_timestamp']}")
+
+    # Test forward EPG info (type=itv&action=get_epg_info&period=24)
+    epg_info_resp = client.get(
+        f"/stalker_portal/server/load.php?type=itv&action=get_epg_info&period=24&token={stb_token}",
+        cookies={"mac": "00:1A:79:0D:D6:C1"}
+    )
+    assert epg_info_resp.status_code == 200
+    epg_info_data = epg_info_resp.json()
+    assert "js" in epg_info_data
+    assert "data" in epg_info_data["js"]
+    assert isinstance(epg_info_data["js"]["data"], dict), "get_epg_info data must be dict of channels"
+    assert "851" in epg_info_data["js"]["data"]
+    ch_progs = epg_info_data["js"]["data"]["851"]
+    assert isinstance(ch_progs, list)
+    if ch_progs:
+        prog = ch_progs[0]
+        assert "id" in prog
+        assert "name" in prog
+        assert "descr" in prog
+        assert "start_timestamp" in prog
+        assert "stop_timestamp" in prog
+        print(f"✓ get_epg_info verified: channel '851' has {len(ch_progs)} forward programs with timestamps")
+
+    # Test type=tv_archive&action=create_link (Catchup / TimeShift replay)
+    archive_cmd = f"auto /media/archive/851/9991.mpg?utc={int(time.time()) - 3600}&lutc={int(time.time()) - 600}"
+    from urllib.parse import quote
+    tv_arch_resp = client.get(
+        f"/stalker_portal/server/load.php?type=tv_archive&action=create_link&cmd={quote(archive_cmd)}&token={stb_token}",
+        cookies={"mac": "00:1A:79:0D:D6:C1"}
+    )
+    assert tv_arch_resp.status_code == 200
+    tv_arch_data = tv_arch_resp.json()
+    assert "js" in tv_arch_data
+    assert "cmd" in tv_arch_data["js"]
+    final_arch_cmd = tv_arch_data["js"]["cmd"]
+    assert f"/t/{admin.token}/stream/851/9991.m3u8" in final_arch_cmd
+    assert "utc=" in final_arch_cmd
+    assert "lutc=" in final_arch_cmd
+    print(f"✓ type=tv_archive&action=create_link generated catchup URL: {final_arch_cmd}")
 
     # 7. Test /api/profile/stalker-mac update
     sess_id = create_session(admin.id)
