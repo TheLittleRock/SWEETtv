@@ -121,8 +121,10 @@ def _build_epg_info_data(params: Dict[str, Any]) -> Dict[str, List[Dict[str, Any
             if not t_start or not t_stop:
                 continue
 
-            # Forward window: program ends after now and starts before period_end
-            if t_stop <= now or t_start >= period_end:
+            # Window: include past programs within catchup window and forward programs before period_end
+            past_window_sec = min(period_sec, catchup_duration_sec) if is_catchup else min(period_sec, 86400)
+            window_start = now - past_window_sec
+            if t_stop <= window_start or t_start >= period_end:
                 continue
 
             prog_id = str(p.get("id") or f"{c_id}_{t_start}")
@@ -481,7 +483,10 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "name": user.username,
                     "sname": user.username,
                     "ls": "1",
-                    "status": "1",
+                    "status": 0,
+                    "msg": "",
+                    "block_msg": "",
+                    "store_auth_data_on_stb": 0,
                     "tariff_plan_name": "SweetTV Premium",
                     "account_number": str(1000 + user.id),
                     "mac": effective_mac,
@@ -566,7 +571,7 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "mac": effective_mac,
                     "phone": "",
                     "ls": "1",
-                    "status": "1",
+                    "status": 0,
                     "account_number": str(1000 + user.id),
                     "tariff_plan_name": "SweetTV Premium",
                     "tv_archive": 1,
