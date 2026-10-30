@@ -2,7 +2,7 @@ name: Build and Publish Multi-Arch Docker Image
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feature/oneplay" ]
   workflow_dispatch:
 
 jobs:
@@ -35,9 +35,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest
-            type=raw,value=v1.2.0
-            type=raw,value=1.2.0
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=oneplay,enable=${{ github.ref == 'refs/heads/feature/oneplay' }}
+            type=ref,event=branch
             type=sha,format=short
 
       - name: Build and Push Docker Image

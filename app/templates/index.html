@@ -177,6 +177,13 @@
                         <input id="channel-search-input" type="text" placeholder="Hledat kanál..." data-i18n-placeholder="player.search_placeholder" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500">
                     </div>
 
+                    <!-- Provider Source Switcher -->
+                    <div id="source-filter-container" class="flex items-center gap-1.5 pb-1">
+                        <button class="source-pill active px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40" data-source="all">Všechny zdroje</button>
+                        <button class="source-pill px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200" data-source="sweettv">Sweet.tv</button>
+                        <button class="source-pill px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200" data-source="oneplay">Oneplay</button>
+                    </div>
+
                     <!-- Category Pills Horizontal Scroll -->
                     <div id="category-pills-container" class="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                         <button class="cat-pill active" data-cat="all" data-i18n="category.all">Všechny</button>
@@ -823,9 +830,69 @@
                     <p class="text-[11px] text-slate-400">Odpojí váš účet a smaže uložené přístupové tokeny.</p>
                 </div>
                 <button id="btn-logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-4 py-2 rounded-xl transition-colors whitespace-nowrap">
-                    Odpojit účet
+                    Odpojit účet Sweet.tv
                 </button>
             </div>
+        </div>
+
+        <!-- Oneplay Provider Settings Card -->
+        <div class="card p-5 sm:p-6 max-w-2xl space-y-5">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center font-bold text-sm">
+                        1P
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">Oneplay Provider (Druhý zdroj)</h3>
+                        <p class="text-[11px] text-slate-400">Přihlášení k české službě Oneplay pro živé vysílání, sportovní MD kanály a archiv.</p>
+                    </div>
+                </div>
+                <div>
+                    <span id="oneplay-status-badge" class="text-xs px-2.5 py-1 rounded-full font-medium {% if oneplay_logged %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20{% else %}bg-slate-800 text-slate-400 border border-slate-700{% endif %}">
+                        {% if oneplay_logged %}Připojeno{% else %}Nepřipojeno{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <form id="oneplay-settings-form" class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-semibold text-slate-300">Povolit Oneplay jako zdroj kanálů</label>
+                    <input id="setting-oneplay-enabled" type="checkbox" {% if oneplay_enabled %}checked{% endif %} class="rounded bg-slate-950 border-slate-700 text-orange-500 focus:ring-0">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Oneplay Email (Uživatelské jméno)</label>
+                        <input id="setting-oneplay-user" type="email" placeholder="vas@email.cz" value="{{ oneplay_username }}" class="input-form font-mono text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Oneplay Heslo</label>
+                        <input id="setting-oneplay-pwd" type="password" placeholder="••••••••" class="input-form font-mono text-xs">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Profil PIN (Rodičovský zámek)</label>
+                        <input id="setting-oneplay-pin" type="text" maxlength="4" value="{{ oneplay_pin }}" placeholder="4321" class="input-form font-mono text-xs">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Název zařízení</label>
+                        <input id="setting-oneplay-device" type="text" value="{{ oneplay_device_name }}" class="input-form font-mono text-xs">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-between gap-3">
+                    <button type="submit" id="btn-oneplay-login" class="bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold py-2 px-5 rounded-xl transition-colors">
+                        Přihlásit & Uložit Oneplay
+                    </button>
+                    {% if oneplay_logged %}
+                    <button type="button" id="btn-oneplay-logout" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                        Odpojit Oneplay
+                    </button>
+                    {% endif %}
+                </div>
+            </form>
         </div>
     </div>
     {% endif %}

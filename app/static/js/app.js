@@ -694,6 +694,85 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Oneplay Settings Form
+    const oneplayForm = document.getElementById("oneplay-settings-form");
+    if (oneplayForm) {
+        oneplayForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById("btn-oneplay-login");
+            const userEl = document.getElementById("setting-oneplay-user");
+            const pwdEl = document.getElementById("setting-oneplay-pwd");
+            const pinEl = document.getElementById("setting-oneplay-pin");
+            const devEl = document.getElementById("setting-oneplay-device");
+            const enabledEl = document.getElementById("setting-oneplay-enabled");
+
+            if (!userEl || !pwdEl) return;
+            if (!userEl.value.trim() || !pwdEl.value.trim()) {
+                showToast("Zadejte uživatelské jméno a heslo k Oneplay.", "error");
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = "Přihlašuji k Oneplay...";
+            }
+
+            try {
+                if (enabledEl) {
+                    await fetch("/api/settings", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ oneplay_enabled: enabledEl.checked })
+                    });
+                }
+
+                const res = await fetch("/api/provider/oneplay/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        username: userEl.value.trim(),
+                        password: pwdEl.value.trim(),
+                        pin: pinEl ? pinEl.value.trim() : "4321",
+                        device_name: devEl ? devEl.value.trim() : "SWEETtv-Oneplay"
+                    })
+                });
+
+                if (res.ok) {
+                    showToast("Úspěšně přihlášeno k Oneplay!", "success");
+                    updateSystemStatus();
+                    if (window.loadChannels) window.loadChannels();
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    const err = await res.json();
+                    showToast(err.detail || "Přihlášení k Oneplay se nezdařilo.", "error");
+                }
+            } catch (err) {
+                showToast("Chyba sítě při komunikaci se serverem.", "error");
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = "Přihlásit & Uložit Oneplay";
+                }
+            }
+        });
+    }
+
+    // Oneplay Disconnect Button
+    const oneplayLogoutBtn = document.getElementById("btn-oneplay-logout");
+    if (oneplayLogoutBtn) {
+        oneplayLogoutBtn.addEventListener("click", async () => {
+            if (confirm("Opravdu chcete odpojit účet Oneplay?")) {
+                try {
+                    await fetch("/api/provider/oneplay/logout", { method: "POST" });
+                    showToast("Účet Oneplay byl odpojen.", "info");
+                    setTimeout(() => location.reload(), 1000);
+                } catch (e) {
+                    showToast("Chyba při odpojování účtu.", "error");
+                }
+            }
+        });
+    }
+
     // Account Disconnect Routine
     async function handleAccountDisconnect() {
         const confirmMsg = typeof t === "function" ? t("status.disconnect_confirm") : "Are you sure you want to disconnect from your Sweet.tv account?";

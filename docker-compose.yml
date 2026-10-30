@@ -1,31 +1,35 @@
 services:
-  sweettv:
-    image: ghcr.io/thelittlerock/sweettv:latest
+  sweettv-oneplay:
+    image: ghcr.io/thelittlerock/sweettv:oneplay
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: sweettv-proxy
+    container_name: sweettv-oneplay-proxy
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5001:5001"
     environment:
       - HOST=0.0.0.0
-      - PORT=5000
+      - PORT=5001
       - TZ=Europe/Prague
       # Optional environment overrides (uncomment only if you want to hardcode them via Docker instead of the Web UI):
       # - SWEETTV_COUNTRY_CODE=cs          # Options: cs, sk, hu, pl, uk, ro
-      # - EXTERNAL_URL=https://tv.yourdomain.com
+      # - EXTERNAL_URL=https://oneplay.yourdomain.com
       # - DEFAULT_QUALITY=best             # Options: auto, best, 1080p, 720p
       # - DIRECT_REDIRECT=true
+      # Oneplay environment credentials (optional, can also be configured via Web UI):
+      # - ONEPLAY_USERNAME=user@example.com
+      # - ONEPLAY_PASSWORD=secret
+      # - ONEPLAY_PIN=4321
     volumes:
-      - sweettv_data:/app/data
+      - oneplay_data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:5000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:5001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
 
 volumes:
-  sweettv_data:
-    name: sweettv_data
+  oneplay_data:
+    name: oneplay_data

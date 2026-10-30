@@ -8,6 +8,7 @@ let currentChannel = null;
 let allChannels = [];
 let allCategories = [];
 let activeCategory = "all";
+let activeSource = "all";
 let currentVariants = [];
 let currentReplayProgram = null;
 let lastDayKeys = [];
@@ -138,6 +139,8 @@ function renderChannels() {
     const searchTerm = (searchInput ? searchInput.value || "" : "").toLowerCase().trim();
 
     const filtered = allChannels.filter(ch => {
+        if (activeSource !== "all" && ch.provider !== activeSource) return false;
+
         const matchSearch = ch.name.toLowerCase().includes(searchTerm) ||
                             (ch.current_programme && ch.current_programme.title.toLowerCase().includes(searchTerm));
         if (!matchSearch) return false;
@@ -159,10 +162,14 @@ function renderChannels() {
     const fallbackProg = typeof t === "function" ? (t("player.live_broadcast") || "Živé vysílání") : "Živé vysílání";
 
     channelsListEl.innerHTML = filtered.map(ch => {
-        const isCurrent = currentChannel && currentChannel.id === ch.id;
+        const isCurrent = currentChannel && String(currentChannel.id) === String(ch.id);
         const progTitle = ch.current_programme ? ch.current_programme.title : fallbackProg;
         const progress = ch.current_programme ? ch.current_programme.progress : 0;
         const logo = ch.icon || "https://staticeu.sweet.tv/images/v2/icons/categories/1000.png";
+        const isOneplay = ch.provider === "oneplay";
+        const providerBadge = isOneplay
+            ? '<span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-orange-950 text-orange-400 border border-orange-800/60">Oneplay</span>'
+            : '<span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60">Sweet</span>';
 
         return `
             <div class="channel-card ${isCurrent ? 'active' : ''}" data-id="${ch.id}">
@@ -170,7 +177,10 @@ function renderChannels() {
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center justify-between gap-1 mb-0.5">
                         <span class="text-xs font-bold text-white truncate">${ch.name}</span>
-                        ${ch.catchup ? '<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">Catchup</span>' : ''}
+                        <div class="flex items-center gap-1 flex-shrink-0">
+                            ${providerBadge}
+                            ${ch.catchup ? '<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">Catchup</span>' : ''}
+                        </div>
                     </div>
                     <div class="text-[11px] text-slate-400 truncate">${progTitle}</div>
                     ${ch.current_programme ? `
@@ -185,8 +195,8 @@ function renderChannels() {
 
     channelsListEl.querySelectorAll(".channel-card").forEach(card => {
         card.addEventListener("click", () => {
-            const cid = parseInt(card.getAttribute("data-id"));
-            const channel = allChannels.find(c => c.id === cid);
+            const cid = card.getAttribute("data-id");
+            const channel = allChannels.find(c => String(c.id) === String(cid));
             if (channel) selectChannel(channel);
         });
     });
@@ -199,7 +209,7 @@ async function selectChannel(channel) {
 
     // Update active highlight
     document.querySelectorAll(".channel-card").forEach(c => {
-        if (parseInt(c.getAttribute("data-id")) === channel.id) {
+        if (String(c.getAttribute("data-id")) === String(channel.id)) {
             c.classList.add("active");
         } else {
             c.classList.remove("active");
@@ -464,7 +474,13 @@ function playCurrentChannelStream() {
     const quality = qualitySelect ? qualitySelect.value : "1080p";
     const userToken = window.SWEET_USER_TOKEN || "";
     const tokenParam = userToken ? `&token=${encodeURIComponent(userToken)}` : "";
-    const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}${tokenParam}`;
+
+    let streamEndpoint;
+    if (currentChannel.provider === "oneplay") {
+        streamEndpoint = `/stream/oneplay/${currentChannel.id}.m3u8?quality=${quality}${tokenParam}`;
+    } else {
+        streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}${tokenParam}`;
+    }
 
     loadHlsStream(streamEndpoint, false);
 }
@@ -477,7 +493,13 @@ function playCatchupProgram(prog) {
     const quality = qualitySelect ? qualitySelect.value : "1080p";
     const userToken = window.SWEET_USER_TOKEN || "";
     const tokenParam = userToken ? `&token=${encodeURIComponent(userToken)}` : "";
-    const streamEndpoint = `/stream/${currentChannel.id}/${prog.id}.m3u8?quality=${quality}${tokenParam}`;
+
+    let streamEndpoint;
+    if (currentChannel.provider === "oneplay") {
+        streamEndpoint = `/stream/oneplay/${currentChannel.id}.m3u8?utc=${prog.start}&quality=${quality}${tokenParam}`;
+    } else {
+        streamEndpoint = `/stream/${currentChannel.id}/${prog.id}.m3u8?quality=${quality}${tokenParam}`;
+    }
     const replayTitle = `${prog.title} (${formatProgrammeDate(prog.start)} ${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)})`;
 
     loadHlsStream(streamEndpoint, true, replayTitle);
@@ -713,6 +735,20 @@ async function loadCatchupSchedule(channelId) {
 
 // Event Listeners
 document.addEventListener("DOMContentLoaded", () => {
+    // Provider Source Switcher (All / Sweet.tv / Oneplay)
+    document.querySelectorAll(".source-pill").forEach(pill => {
+        pill.addEventListener("click", () => {
+            document.querySelectorAll(".source-pill").forEach(p => {
+                p.classList.remove("active", "bg-cyan-500/20", "text-cyan-400", "border-cyan-500/40");
+                p.classList.add("bg-slate-900", "text-slate-400", "border-slate-800");
+            });
+            pill.classList.remove("bg-slate-900", "text-slate-400", "border-slate-800");
+            pill.classList.add("active", "bg-cyan-500/20", "text-cyan-400", "border-cyan-500/40");
+            activeSource = pill.getAttribute("data-source") || "all";
+            renderChannels();
+        });
+    });
+
     // Channel Search with Debounce
     if (searchInput) {
         let searchTimeout = null;

@@ -28,6 +28,7 @@ from app.auth import (
 from app.client import client
 from app.config import config
 from app.epg import get_cached_channels, invalidate_cache
+from app.providers.manager import provider_manager
 from app.stream import get_stream_details
 from app.version import APP_NAME, APP_VERSION
 
@@ -80,6 +81,24 @@ class SettingsUpdate(BaseModel):
     m3u_catchup: Optional[bool] = None
     xtream_user: Optional[str] = None
     xtream_password: Optional[str] = None
+    oneplay_enabled: Optional[bool] = None
+    oneplay_username: Optional[str] = None
+    oneplay_password: Optional[str] = None
+    oneplay_pin: Optional[str] = None
+    oneplay_device_name: Optional[str] = None
+
+
+class OneplayLoginRequest(BaseModel):
+    username: str
+    password: str
+    pin: Optional[str] = "4321"
+    device_name: Optional[str] = "SWEETtv-Oneplay"
+
+
+class OneplayProfileRequest(BaseModel):
+    profile_id: str
+    pin: Optional[str] = "4321"
+
 
 
 # =========================================================================
@@ -349,6 +368,11 @@ def get_status(current_user: User = Depends(require_user)) -> Dict[str, Any]:
         "xtream_user": current_user.username,
         "xtream_password": "••••••••",
         "m3u_catchup": config.get("m3u_catchup", True),
+        "oneplay_enabled": config.oneplay_enabled,
+        "oneplay_logged": config.is_oneplay_logged,
+        "oneplay_username": config.get("oneplay_username", ""),
+        "oneplay_profile": config.get("oneplay_profile", ""),
+        "oneplay_token_expires_in": max(0, int(config.get("oneplay_token_valid_to", 0)) - now) if config.get("oneplay_token_valid_to") else 0,
         "uptime_seconds": int(now - SERVER_START_TIME),
         "user": {
             "username": current_user.username,
@@ -415,37 +439,122 @@ def reset_device(admin: User = Depends(require_admin)) -> Dict[str, Any]:
 
 
 # =========================================================================
+# ONEPLAY PROVIDER AUTH & MANAGEMENT (ADMIN ONLY)
+# =========================================================================
+
+@router.post("/provider/oneplay/login")
+def oneplay_login(payload: OneplayLoginRequest, admin: User = Depends(require_admin)) -> Dict[str, Any]:
+    """Authenticates with Oneplay and stores session credentials."""
+    config.update({
+        "oneplay_username": payload.username.strip(),
+        "oneplay_password": payload.password.strip(),
+        "oneplay_pin": (payload.pin or "4321").strip(),
+        "oneplay_device_name": (payload.device_name or "SWEETtv-Oneplay").strip(),
+    })
+    success = provider_manager.oneplay.ensure_authenticated()
+    if not success:
+        raise HTTPException(status_code=400, detail="Přihlášení k Oneplay se nezdařilo. Zkontrolujte přihlašovací údaje.")
+
+    return {
+        "status": "OK",
+        "logged": True,
+        "username": config.get("oneplay_username"),
+        "profile": config.get("oneplay_profile"),
+    }
+
+
+@router.get("/provider/oneplay/profiles")
+def oneplay_profiles(admin: User = Depends(require_admin)) -> Dict[str, Any]:
+    """Retrieves available user profiles for the connected Oneplay account."""
+    if not config.is_oneplay_logged:
+        raise HTTPException(status_code=401, detail="Oneplay is not authenticated.")
+
+    token = config.get("oneplay_token")
+    res = provider_manager.oneplay.api.call_api("user.profiles.display", data={"payload": {"mode": "change"}}, token=token)
+    p_data = res.get("data") or res.get("result", {}).get("data") or {}
+    profiles_raw = (p_data.get("availableProfiles") or {}).get("profiles") or []
+
+    profiles = []
+    for p in profiles_raw:
+        prof = p.get("profile") or {}
+        profiles.append({
+            "id": prof.get("id"),
+            "name": prof.get("name"),
+            "is_child": prof.get("isChild", False),
+            "is_active": prof.get("id") == config.get("oneplay_profile_id"),
+        })
+
+    return {"status": "OK", "profiles": profiles}
+
+
+@router.post("/provider/oneplay/select-profile")
+def oneplay_select_profile(payload: OneplayProfileRequest, admin: User = Depends(require_admin)) -> Dict[str, Any]:
+    """Selects and activates a specific Oneplay profile."""
+    if not config.is_oneplay_logged:
+        raise HTTPException(status_code=401, detail="Oneplay is not authenticated.")
+
+    token = config.get("oneplay_token")
+    pin = payload.pin or config.get("oneplay_pin", "4321")
+    post_prof: Dict[str, Any] = {"payload": {"profileId": payload.profile_id}}
+    if pin and pin != "4321":
+        post_prof["authorization"] = [{"schema": "PinRequestAuthorization", "pin": str(pin), "type": "profile"}]
+
+    res = provider_manager.oneplay.api.call_api("user.profile.select", data=post_prof, token=token)
+    data = res.get("data") or res.get("result", {}).get("data") or {}
+    new_token = data.get("bearerToken")
+    if new_token:
+        config.update({
+            "oneplay_token": new_token,
+            "oneplay_profile_id": payload.profile_id,
+            "oneplay_token_valid_to": int(time.time() + 14400),
+        })
+        return {"status": "OK", "profile_id": payload.profile_id}
+
+    raise HTTPException(status_code=400, detail="Výběr profilu Oneplay se nezdařil.")
+
+
+@router.post("/provider/oneplay/logout")
+def oneplay_logout(admin: User = Depends(require_admin)) -> Dict[str, Any]:
+    """Clears Oneplay tokens and session."""
+    config.update({
+        "oneplay_token": "",
+        "oneplay_token_valid_to": 0,
+        "oneplay_logged": False,
+    })
+    return {"status": "OK", "logged": False}
+
+
+# =========================================================================
 # CHANNELS & STREAM INFO (AUTHENTICATED USERS)
 # =========================================================================
 
 @router.get("/channels")
-def get_channels_api(current_user: User = Depends(require_user)) -> Dict[str, Any]:
+def get_channels_api(
+    source: Optional[str] = Query(None, description="Source filter: 'all', 'sweettv', 'oneplay'"),
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
     """Returns channel list formatted for the frontend player."""
-    if not config.is_logged:
-        raise HTTPException(status_code=401, detail="Sweet.tv login required.")
+    has_sweet = config.is_logged
+    has_oneplay = config.oneplay_enabled and config.is_oneplay_logged
 
-    data = get_cached_channels(need_epg=True)
-    if not data or data.get("status") != "OK":
-        raise HTTPException(status_code=502, detail="Failed to fetch channels from Sweet.tv")
-
-    categories: Dict[int, str] = {cat["id"]: cat.get("caption", "") for cat in data.get("categories", [])}
+    if not has_sweet and not has_oneplay:
+        raise HTTPException(status_code=401, detail="No active IPTV provider logged in.")
 
     now = int(time.time())
     channel_list = []
+    categories_set = set()
 
-    for ch in data.get("list", []):
-        if not ch.get("available"):
-            continue
-
+    channels = provider_manager.get_channels(source=source, need_epg=True)
+    for ch in channels:
         cid = ch.get("id")
+        provider = ch.get("provider")
         cname = ch.get("name")
-        icon = ch.get("icon_v2_url") or ch.get("icon_url")
-        slug = ch.get("slug")
+        icon = ch.get("icon")
+        cats = ch.get("category", [])
+        for c in cats:
+            categories_set.add(c)
 
-        # Category captions
-        cat_names = [categories[c] for c in ch.get("category", []) if c in categories and c != 1000]
-
-        # EPG now and next
+        # Build now/next EPG
         current_prog = None
         next_prog = None
         epg_items = ch.get("epg", [])
@@ -473,10 +582,12 @@ def get_channels_api(current_user: User = Depends(require_user)) -> Dict[str, An
 
         channel_list.append({
             "id": cid,
+            "canonical_id": ch.get("canonical_id", f"{provider}:{cid}"),
+            "provider": provider,
             "name": cname,
-            "slug": slug,
+            "slug": cid,
             "icon": icon,
-            "categories": cat_names,
+            "categories": cats,
             "catchup": ch.get("catchup", False),
             "catchup_duration": ch.get("catchup_duration", 7),
             "current_programme": current_prog,
@@ -485,7 +596,7 @@ def get_channels_api(current_user: User = Depends(require_user)) -> Dict[str, An
 
     return {
         "total": len(channel_list),
-        "categories": [{"id": k, "caption": v} for k, v in categories.items()],
+        "categories": [{"id": c, "caption": c} for c in sorted(categories_set)],
         "channels": channel_list,
     }
 
@@ -530,21 +641,38 @@ def get_channel_epg_schedule(
 
 @router.get("/stream/{channel_id}/info")
 def get_stream_info_api(
-    channel_id: int,
-    epg_id: Optional[int] = None,
+    channel_id: str,
+    epg_id: Optional[str] = None,
     current_user: User = Depends(require_user)
 ) -> Dict[str, Any]:
     """Returns available streaming qualities and variants for a channel."""
+    clean_str = str(channel_id).replace(".m3u8", "").strip()
+    if clean_str.startswith("oneplay:") or "~" in clean_str or (not clean_str.isdigit() and config.oneplay_enabled):
+        cid_op = clean_str.replace("oneplay:", "")
+        details = provider_manager.oneplay.get_stream_details(cid_op)
+        if not details or not details.get("master_url"):
+            raise HTTPException(status_code=502, detail="Failed to retrieve stream from Oneplay.")
+        return {
+            "channel_id": clean_str,
+            "provider": "oneplay",
+            "master_url": details.get("master_url"),
+            "direct_redirect": False,
+            "variants": [],
+        }
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
-    details = get_stream_details(channel_id, epg_id)
+    cid_clean = int("".join(c for c in clean_str if c.isdigit()))
+    eid_clean = int("".join(c for c in epg_id if c.isdigit())) if epg_id else None
+    details = get_stream_details(cid_clean, eid_clean)
     if not details:
         raise HTTPException(status_code=502, detail="Failed to retrieve stream details.")
 
     return {
-        "channel_id": channel_id,
-        "epg_id": epg_id,
+        "channel_id": cid_clean,
+        "provider": "sweettv",
+        "epg_id": eid_clean,
         "master_url": details.get("master_url"),
         "scheme": details.get("scheme"),
         "variants": details.get("variants", []),
@@ -579,6 +707,21 @@ def update_settings(
 
     if payload.m3u_catchup is not None:
         changed["m3u_catchup"] = payload.m3u_catchup
+
+    if payload.oneplay_enabled is not None:
+        changed["oneplay_enabled"] = payload.oneplay_enabled
+
+    if payload.oneplay_username is not None:
+        changed["oneplay_username"] = payload.oneplay_username.strip()
+
+    if payload.oneplay_password is not None and payload.oneplay_password.strip():
+        changed["oneplay_password"] = payload.oneplay_password.strip()
+
+    if payload.oneplay_pin is not None:
+        changed["oneplay_pin"] = payload.oneplay_pin.strip()
+
+    if payload.oneplay_device_name is not None:
+        changed["oneplay_device_name"] = payload.oneplay_device_name.strip()
 
     if changed:
         config.update(changed)

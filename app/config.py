@@ -33,6 +33,19 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "xtream_user": "sweettv",   # Xtream Codes API username
     "xtream_password": "sweet", # Xtream Codes API password
     "m3u_catchup": True,        # Include catchup tags in M3U by default
+    # Oneplay Provider Configuration
+    "oneplay_enabled": True,
+    "oneplay_username": "",
+    "oneplay_password": "",
+    "oneplay_profile": "",
+    "oneplay_profile_id": "",
+    "oneplay_pin": "4321",
+    "oneplay_device_name": "SWEETtv-Oneplay",
+    "oneplay_account_id": "",
+    "oneplay_token": "",
+    "oneplay_token_valid_to": 0,
+    "oneplay_api_version": "v1.11",
+    "oneplay_logged": False,
 }
 
 
@@ -107,6 +120,31 @@ class ConfigManager:
             env_catchup = (os.getenv("M3U_CATCHUP") or "").strip()
             if env_catchup:
                 self.data["m3u_catchup"] = env_catchup.lower() in ("true", "1", "yes")
+
+            # Oneplay Environment Overrides
+            env_op_user = (os.getenv("ONEPLAY_USERNAME") or "").strip()
+            if env_op_user:
+                self.data["oneplay_username"] = env_op_user
+
+            env_op_pwd = (os.getenv("ONEPLAY_PASSWORD") or "").strip()
+            if env_op_pwd:
+                self.data["oneplay_password"] = env_op_pwd
+
+            env_op_pin = (os.getenv("ONEPLAY_PIN") or "").strip()
+            if env_op_pin:
+                self.data["oneplay_pin"] = env_op_pin
+
+            env_op_profile = (os.getenv("ONEPLAY_PROFILE") or "").strip()
+            if env_op_profile:
+                self.data["oneplay_profile"] = env_op_profile
+
+            env_op_dev = (os.getenv("ONEPLAY_DEVICE_NAME") or "").strip()
+            if env_op_dev:
+                self.data["oneplay_device_name"] = env_op_dev
+
+            env_op_enabled = (os.getenv("ONEPLAY_ENABLED") or "").strip()
+            if env_op_enabled:
+                self.data["oneplay_enabled"] = env_op_enabled.lower() in ("true", "1", "yes")
 
             self._ensure_defaults()
 
@@ -194,6 +232,14 @@ class ConfigManager:
     @property
     def xtream_password(self) -> str:
         return self.get("xtream_password", "sweet")
+
+    @property
+    def oneplay_enabled(self) -> bool:
+        return bool(self.get("oneplay_enabled", True))
+
+    @property
+    def is_oneplay_logged(self) -> bool:
+        return bool(self.get("oneplay_logged")) and bool(self.get("oneplay_token"))
 
 
 # Global configuration instance

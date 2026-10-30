@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from app.auth import validate_token_or_session
 from app.config import config
 from app.epg import generate_m3u_playlist, generate_xmltv_epg, get_xmltv_epg_gz
+from app.providers.manager import provider_manager
 from app.stream import (
     build_proxy_master_m3u8,
     build_proxy_variant_m3u8,
@@ -71,6 +72,7 @@ def clean_id(raw_id: str) -> int:
 def get_playlist(
     request: Request,
     token: Optional[str] = None,
+    source: Optional[str] = Query(None, description="Source filter: 'all', 'sweettv', 'oneplay'"),
     quality: Optional[str] = Query(None, description="Quality preset: 'auto', 'best', '1080p', '720p'"),
     catchup: Optional[str] = Query(None, description="Catchup mode: 'vod', 'default', 'none', '0'"),
     no_epg: Optional[bool] = Query(False, description="Omit url-tvg header to avoid triggering automatic EPG import"),
@@ -84,10 +86,18 @@ def get_playlist(
     """
     user = validate_token_or_session(request, token)
 
-    if not config.is_logged:
+    has_sweet = config.is_logged
+    has_oneplay = config.oneplay_enabled and config.is_oneplay_logged
+
+    target_source = (source or "all").lower().strip()
+    if target_source in ("sweettv", "sweet") and not has_sweet:
+        raise HTTPException(status_code=401, detail="Sweet.tv is not logged in.")
+    elif target_source == "oneplay" and not has_oneplay:
+        raise HTTPException(status_code=401, detail="Oneplay is not logged in.")
+    elif not has_sweet and not has_oneplay:
         raise HTTPException(
             status_code=401,
-            detail="Server is not logged in to Sweet.tv. Please authenticate first via Web UI."
+            detail="Server is not logged in to any IPTV provider (Sweet.tv or Oneplay). Please authenticate first via Web UI."
         )
 
     # If requested via /playlist_clean.m3u or /playlist_bare.m3u
@@ -97,13 +107,13 @@ def get_playlist(
 
     is_path_token = request.url.path.startswith("/t/")
     token_mode = "path" if is_path_token else "query"
-    playlist_text = generate_m3u_playlist(
-        base_url,
+
+    playlist_text = provider_manager.generate_m3u(
+        base_url=base_url,
+        source=target_source,
         quality=quality or config.default_quality,
         catchup=catchup,
         no_epg=is_clean,
-        legacy_id=bool(legacy_id),
-        bare=is_bare,
         token=user.token,
         token_mode=token_mode
     )
@@ -135,6 +145,12 @@ def get_epg(
     """Returns XMLTV Electronic Program Guide formatted XML."""
     validate_token_or_session(request, token)
 
+    # Check if channel is an Oneplay channel
+    raw_cid = channel_id.replace(".m3u8", "").strip()
+    if raw_cid.startswith("oneplay:") or "~" in raw_cid or (not raw_cid.isdigit() and config.oneplay_enabled):
+        target_cid = raw_cid.replace("oneplay:", "")
+        return get_oneplay_stream(request, target_cid, token=token, utc=utc, start=start)
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -156,6 +172,12 @@ def get_epg_gz(request: Request, token: Optional[str] = None):
     """Returns gzip-compressed XMLTV EPG for fast client downloads."""
     validate_token_or_session(request, token)
 
+    # Check if channel is an Oneplay channel
+    raw_cid = channel_id.replace(".m3u8", "").strip()
+    if raw_cid.startswith("oneplay:") or "~" in raw_cid or (not raw_cid.isdigit() and config.oneplay_enabled):
+        target_cid = raw_cid.replace("oneplay:", "")
+        return get_oneplay_stream(request, target_cid, token=token, utc=utc, start=start)
+
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -175,6 +197,68 @@ def get_epg_gz(request: Request, token: Optional[str] = None):
 # =========================================================================
 # STREAM PLAYBACK ROUTES
 # =========================================================================
+
+@router.get("/stream/oneplay/proxy_hls", response_class=Response)
+def proxy_oneplay_hls(request: Request, url: str = Query(..., description="Target Oneplay HLS URL")):
+    """
+    Proxies child variant playlists for Oneplay using Firefox headers,
+    while leaving video segment (.ts/.m4s) URLs directing to the CDN edge.
+    """
+    raw_url = unquote(url)
+    base_url = get_effective_base_url(request)
+    rewritten = provider_manager.oneplay.rewrite_manifest(raw_url, base_url)
+    return Response(
+        content=rewritten,
+        media_type="application/vnd.apple.mpegurl",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        }
+    )
+
+
+@router.get("/stream/oneplay/{channel_id}.m3u8", response_class=Response)
+@router.get("/stream/oneplay/{channel_id}", response_class=Response)
+@router.get("/play/oneplay/{channel_id}.m3u8", response_class=Response)
+@router.get("/play/oneplay/{channel_id}", response_class=Response)
+@router.get("/t/{token}/stream/oneplay/{channel_id}.m3u8", response_class=Response)
+@router.get("/t/{token}/stream/oneplay/{channel_id}", response_class=Response)
+@router.get("/t/{token}/play/oneplay/{channel_id}.m3u8", response_class=Response)
+@router.get("/t/{token}/play/oneplay/{channel_id}", response_class=Response)
+def get_oneplay_stream(
+    request: Request,
+    channel_id: str,
+    token: Optional[str] = None,
+    utc: Optional[int] = Query(None, description="UTC timestamp for catchup"),
+    start: Optional[int] = Query(None, description="Start timestamp for catchup")
+):
+    """Main HLS Stream Endpoint for Oneplay Live TV & Catchup."""
+    validate_token_or_session(request, token)
+    params = parse_stream_query(request)
+    ts_val = params.get("utc") or params.get("start") or params.get("timestamp") or utc or start
+    utc_time = safe_parse_timestamp(ts_val)
+
+    clean_cid = channel_id.replace(".m3u8", "").strip()
+    stream_info = provider_manager.oneplay.get_stream_details(clean_cid, utc_time=utc_time)
+    if not stream_info or not stream_info.get("master_url"):
+        raise HTTPException(status_code=502, detail="Failed to retrieve stream from Oneplay.")
+
+    base_url = get_effective_base_url(request)
+    rewritten_manifest = provider_manager.oneplay.rewrite_manifest(stream_info["master_url"], base_url)
+
+    return Response(
+        content=rewritten_manifest,
+        media_type="application/vnd.apple.mpegurl",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        }
+    )
+
 
 @router.get("/stream/variant.m3u8", response_class=Response)
 @router.get("/t/{token}/stream/variant.m3u8", response_class=Response)
@@ -227,6 +311,12 @@ def get_channel_stream(
     Protected by user token or session.
     """
     validate_token_or_session(request, token)
+
+    # Check if channel is an Oneplay channel
+    raw_cid = channel_id.replace(".m3u8", "").strip()
+    if raw_cid.startswith("oneplay:") or "~" in raw_cid or (not raw_cid.isdigit() and config.oneplay_enabled):
+        target_cid = raw_cid.replace("oneplay:", "")
+        return get_oneplay_stream(request, target_cid, token=token, utc=utc, start=start)
 
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
@@ -290,6 +380,12 @@ def get_catchup_stream(
 ):
     """Catchup archive replay stream endpoint."""
     validate_token_or_session(request, token)
+
+    # Check if channel is an Oneplay channel
+    raw_cid = channel_id.replace(".m3u8", "").strip()
+    if raw_cid.startswith("oneplay:") or "~" in raw_cid or (not raw_cid.isdigit() and config.oneplay_enabled):
+        target_cid = raw_cid.replace("oneplay:", "")
+        return get_oneplay_stream(request, target_cid, token=token, utc=utc, start=start)
 
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")

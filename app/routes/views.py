@@ -55,6 +55,13 @@ def index_view(request: Request):
             "must_change_password": user.must_change_password,
             "xtream_user": user.username,
             "xtream_password": "••••••••",
+            # Oneplay Provider Context
+            "oneplay_enabled": config.oneplay_enabled,
+            "oneplay_logged": config.is_oneplay_logged,
+            "oneplay_username": config.get("oneplay_username", ""),
+            "oneplay_profile": config.get("oneplay_profile", ""),
+            "oneplay_pin": config.get("oneplay_pin", "4321"),
+            "oneplay_device_name": config.get("oneplay_device_name", "SWEETtv-Oneplay"),
         }
     )
 
