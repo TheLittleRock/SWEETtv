@@ -221,8 +221,10 @@ def generate_xmltv_epg(
                 start_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(t_start))
                 stop_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(t_stop))
 
-                # Standard XMLTV attributes only
+                # Standard XMLTV attributes and catchup reference
                 attribs = {"start": start_str, "stop": stop_str, "channel": ch_id}
+                if item.get("id"):
+                    attribs["catchup-id"] = str(item.get("id"))
 
                 prog_elem = ET.SubElement(xml_root, "programme", attrib=attribs)
                 title_text = item.get("text", "")

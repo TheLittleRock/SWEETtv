@@ -48,14 +48,24 @@ def test_stalker_mac_auth():
     assert stb_token
     print(f"✓ IPTVnator handshake succeeded with stb_token: {stb_token}")
 
-    # 4. Test unauthenticated handshake (invalid MAC, no token)
-    unauth_resp = client.get(
+    # 4. Test handshake without credentials or with unknown MAC:
+    # Under Ministra spec, handshake returns token + random (200), but subsequent get_profile or channel requests are rejected with 401.
+    anon_handshake = client.get(
         "/stalker_portal/server/load.php?type=stb&action=handshake",
+        cookies={"mac": "AA:BB:CC:DD:EE:FF"}
+    )
+    assert anon_handshake.status_code == 200, f"Handshake should return 200 with token, got {anon_handshake.status_code}"
+    anon_token = anon_handshake.json()["js"]["token"]
+    assert anon_token
+
+    # Now verify unauthenticated access to get_profile is properly rejected with 401
+    unauth_resp = client.get(
+        f"/stalker_portal/server/load.php?type=stb&action=get_profile&token={anon_token}",
         cookies={"mac": "AA:BB:CC:DD:EE:FF"}
     )
     assert unauth_resp.status_code == 401
     assert "not registered" in unauth_resp.text
-    print(f"✓ Unregistered MAC properly rejected with 401: {unauth_resp.json()}")
+    print(f"✓ Unregistered MAC properly rejected with 401 on get_profile: {unauth_resp.json()}")
 
     # 5. Test get_profile using stb_token and MAC
     profile_resp = client.get(
@@ -65,7 +75,21 @@ def test_stalker_mac_auth():
     assert profile_resp.status_code == 200
     profile_data = profile_resp.json()
     assert profile_data["js"]["name"] == "admin"
-    print(f"✓ get_profile succeeded for user: {profile_data['js']['name']}")
+    assert profile_data["js"]["services"]["tv_archive"] == 1
+    assert profile_data["js"]["tv_archive"] == 1
+    assert profile_data["js"]["timeshift"] == 1
+    print(f"✓ get_profile succeeded for user: {profile_data['js']['name']} with tv_archive service enabled")
+
+    # Test get_modules
+    modules_resp = client.get(
+        f"/stalker_portal/server/load.php?type=stb&action=get_modules&token={stb_token}",
+        cookies={"mac": "00:1A:79:0D:D6:C1"}
+    )
+    assert modules_resp.status_code == 200
+    modules_data = modules_resp.json()
+    assert "all_modules" in modules_data["js"]
+    assert "tv_archive" in modules_data["js"]["all_modules"]
+    print(f"✓ get_modules verified: all_modules={modules_data['js']['all_modules']}")
 
     # 6. Test get_all_channels and create_link with mock channel cache
     import time
@@ -115,11 +139,14 @@ def test_stalker_mac_auth():
     assert first_ch["id"] == "851"
     assert first_ch["tvg-id"] == "851", "Must contain tvg-id for IPTVnator"
     assert first_ch["tvg_id"] == "851"
+    assert first_ch["tvg"]["id"] == "851", "Must contain tvg object with id"
     assert first_ch["tvg_name"] == "ČT1 HD"
     assert first_ch["tv_archive"] == 1
     assert first_ch["archive"] == 1
+    assert first_ch["catchup"] == 1
+    assert "catchup_source" in first_ch
     assert first_ch["tv_archive_duration"] == 168, f"Expected 168 hours, got {first_ch['tv_archive_duration']}"
-    print(f"✓ Channel EPG mapping verified: tvg-id={first_ch['tvg-id']}, tv_archive_duration={first_ch['tv_archive_duration']}h")
+    print(f"✓ Channel EPG mapping verified: tvg-id={first_ch['tvg-id']}, tvg.id={first_ch['tvg']['id']}, tv_archive_duration={first_ch['tv_archive_duration']}h")
 
     # Test create_link for live TV
     create_link_resp = client.get(

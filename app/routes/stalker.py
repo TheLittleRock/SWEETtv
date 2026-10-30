@@ -30,7 +30,7 @@ router = APIRouter(tags=["Stalker / MAG Portal"])
 _stb_sessions: Dict[str, Dict[str, Any]] = {}
 
 
-def _save_stb_session(stb_token: str, user_id: int, mac: Optional[str] = None):
+def _save_stb_session(stb_token: str, user_id: Optional[int], mac: Optional[str] = None):
     """Stores STB session token with timestamp and purges sessions older than 7 days."""
     now = time.time()
     expired = [k for k, v in _stb_sessions.items() if now - v.get("created_at", 0) > 7 * 86400]
@@ -131,6 +131,10 @@ def _build_epg_info_data(params: Dict[str, Any]) -> Dict[str, List[Dict[str, Any
             ch_programs.append({
                 "id": prog_id,
                 "epg_id": prog_id,
+                "ch_id": c_id_str,
+                "channel_id": c_id_str,
+                "tvg_id": c_id_str,
+                "tvg-id": c_id_str,
                 "name": p.get("text", ""),
                 "descr": p.get("description") or p.get("genre") or "",
                 "time": time.strftime("%H:%M", time.localtime(t_start)),
@@ -216,6 +220,9 @@ def _build_epg_items(
                 "id": prog_id,
                 "epg_id": prog_id,
                 "ch_id": str(c_id),
+                "channel_id": str(c_id),
+                "tvg_id": str(c_id),
+                "tvg-id": str(c_id),
                 "name": p.get("text", ""),
                 "descr": p.get("description") or p.get("genre") or "",
                 "time": time.strftime("%H:%M", time.localtime(t_start)),
@@ -238,25 +245,31 @@ def _build_epg_items(
 
 def _extract_mac(request: Request, params: Dict[str, Any]) -> Optional[str]:
     """
-    Extracts and normalizes MAC address from query/form params, cookies, or headers.
+    Extracts and normalizes MAC address from query/form/JSON params, cookies, or headers.
     Returns canonical lowercase colon-separated format (e.g. '00:1a:79:0d:d6:c1') or None.
     """
     candidates = []
 
-    # 1. Query / Form parameters
-    for key in ("mac", "stb_mac", "device_id"):
+    # 1. Query / Form / JSON parameters
+    for key in (
+        "mac", "stb_mac", "mac_address", "macAddress", "hw_mac",
+        "stbMac", "stb_mac_address", "custom_mac", "device_mac"
+    ):
         val = params.get(key)
         if val:
             candidates.append(str(val))
 
     # 2. Cookies
-    for key in ("mac", "stb_mac", "MAC"):
+    for key in ("mac", "stb_mac", "MAC", "stbMac", "custom_mac"):
         val = request.cookies.get(key)
         if val:
             candidates.append(val)
 
     # 3. Custom Headers
-    for header in ("x-mac", "x-user-mac", "mac", "stb-mac"):
+    for header in (
+        "x-mac", "x-user-mac", "mac", "stb-mac", "stb_mac",
+        "x-device-id", "device-id", "x-forwarded-mac", "x-stb-mac"
+    ):
         val = request.headers.get(header)
         if val:
             candidates.append(val)
@@ -264,16 +277,18 @@ def _extract_mac(request: Request, params: Dict[str, Any]) -> Optional[str]:
     # 4. Raw Cookie header search (in case of URL-encoding or non-standard format)
     raw_cookie = request.headers.get("cookie", "")
     if raw_cookie:
-        cookie_match = re.search(r"(?:^|;\s*)(?:mac|stb_mac)=([^;]+)", raw_cookie, re.IGNORECASE)
-        if cookie_match:
-            candidates.append(cookie_match.group(1))
+        cookie_matches = re.findall(r"(?:^|;\s*)(?:mac|stb_mac|stbMac)=([^;]+)", raw_cookie, re.IGNORECASE)
+        for cm in cookie_matches:
+            candidates.append(cm)
 
-    # 5. Authorization header check (e.g. Bearer 00:1A:79:...)
+    # 5. Authorization header check (e.g. Bearer 00:1A:79:... or MAC 00:1A:79:... or raw 00:1A:79:...)
     auth_header = request.headers.get("authorization", "")
     if auth_header:
-        parts = auth_header.split()
-        if len(parts) == 2 and parts[0].lower() in ("bearer", "mac"):
+        parts = auth_header.strip().split()
+        if len(parts) == 2 and parts[0].lower() in ("bearer", "mac", "stb"):
             candidates.append(parts[1])
+        elif len(parts) == 1:
+            candidates.append(parts[0])
 
     # Validate candidates against MAC format
     for cand in candidates:
@@ -307,6 +322,15 @@ async def stalker_load(request: Request, token: Optional[str] = None):
     """
     params: Dict[str, Any] = dict(request.query_params)
     if request.method == "POST":
+        # 1. Parse JSON body if present
+        try:
+            body_json = await request.json()
+            if isinstance(body_json, dict):
+                for k, v in body_json.items():
+                    params[k] = v
+        except Exception:
+            pass
+        # 2. Parse Form body if present
         try:
             form = await request.form()
             for k, v in form.items():
@@ -315,54 +339,80 @@ async def stalker_load(request: Request, token: Optional[str] = None):
             pass
 
     mac = _extract_mac(request, params)
-    token_candidate = token or params.get("token") or params.get("t")
+    token_candidate = token or params.get("token") or params.get("t") or params.get("auth_token")
+    if not token_candidate:
+        token_candidate = request.headers.get("x-token") or request.headers.get("token")
+    if not token_candidate:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header and auth_header.strip().lower().startswith("bearer "):
+            token_candidate = auth_header.strip()[7:].strip()
+    if not token_candidate:
+        token_candidate = request.cookies.get("token") or request.cookies.get("stb_token")
+    if token_candidate:
+        token_candidate = str(token_candidate).strip()
+        if token_candidate.lower() in ("null", "undefined", "none", "", "0", "false"):
+            token_candidate = None
 
     user: Optional[User] = None
 
-    # 1. Authenticate via token in path / query parameter
+    # 1. Authenticate via token in path / query parameter / headers
     if token_candidate:
-        user = get_user_by_token(str(token_candidate).strip())
+        user = get_user_by_token(token_candidate)
 
     # 2. Authenticate via previous STB handshake session token
     if not user and token_candidate:
-        stb_sess = _get_stb_session(str(token_candidate).strip())
-        if stb_sess:
+        stb_sess = _get_stb_session(token_candidate)
+        if stb_sess and stb_sess.get("user_id"):
             user = get_user_by_id(stb_sess["user_id"])
 
-    # 3. Authenticate via web browser session cookie
-    if not user:
-        user = get_current_user(request)
-
-    # 4. Authenticate via registered device MAC address
+    # 3. Authenticate via registered device MAC address
     if not user and mac:
         user = get_user_by_stalker_mac(mac)
 
-    # Validate user permissions if found
-    if user:
-        if not user.is_active:
-            logger.warning(f"Stalker access rejected: user '{user.username}' is disabled.")
-            return JSONResponse(
-                {"js": {"error": f"Authorization failed: Account '{user.username}' is disabled."}},
-                status_code=403
-            )
-        if user.is_expired():
-            logger.warning(f"Stalker access rejected: user '{user.username}' has expired.")
-            return JSONResponse(
-                {"js": {"error": f"Authorization failed: Account '{user.username}' has expired."}},
-                status_code=403
-            )
+    # 4. Authenticate via web browser session cookie
+    if not user:
+        user = get_current_user(request)
+
+    req_type = str(params.get("type", "")).strip().lower()
+    action = str(params.get("action", "")).strip().lower()
+
+    # Special handling for handshake:
+    # Ministra / MAG specification NEVER returns 401 on handshake.
+    # Handshake initializes the STB session and returns a session token + random salt.
+    if req_type == "stb" and action == "handshake":
+        salt = "12345678"
+        effective_mac = mac or (user.stalker_mac if user else None) or "00:1a:79:00:00:01"
+        stb_token = hashlib.md5(f"{effective_mac}:{salt}:{time.time()}".encode("utf-8")).hexdigest()
+        user_id = user.id if user else None
+        _save_stb_session(stb_token, user_id, effective_mac)
 
         # Auto-bind MAC to this user if token-authorized and user has no MAC registered yet
-        if mac and not user.stalker_mac:
+        if user and mac and not user.stalker_mac:
             existing_owner = get_user_by_stalker_mac(mac)
             if not existing_owner:
                 try:
                     update_user(user.id, stalker_mac=mac)
-                    logger.info(f"Auto-bound MAC {mac} to user '{user.username}' upon authorized request.")
+                    logger.info(f"Auto-bound MAC {mac} to user '{user.username}' during handshake.")
                 except Exception as e:
                     logger.warning(f"Failed to auto-bind MAC {mac}: {e}")
 
-    else:
+        logger.info(f"Stalker handshake issued session token: user={user.username if user else 'anonymous'}, mac={effective_mac}")
+        return JSONResponse({
+            "js": {
+                "token": stb_token,
+                "random": salt
+            }
+        })
+
+    # For all non-handshake actions, user must be authenticated
+    if not user:
+        # Check if MAC was provided in this request to associate with previous handshake session
+        if mac:
+            user = get_user_by_stalker_mac(mac)
+            if user and token_candidate:
+                _save_stb_session(token_candidate, user.id, mac)
+
+    if not user:
         # Neither token nor MAC matched a registered user
         logger.warning(
             f"Stalker authentication failed: MAC={mac or 'none'} is not registered and token={token_candidate or 'none'} is invalid."
@@ -376,8 +426,30 @@ async def stalker_load(request: Request, token: Optional[str] = None):
             status_code=401
         )
 
-    req_type = str(params.get("type", "")).strip().lower()
-    action = str(params.get("action", "")).strip().lower()
+    # Validate user permissions if found
+    if not user.is_active:
+        logger.warning(f"Stalker access rejected: user '{user.username}' is disabled.")
+        return JSONResponse(
+            {"js": {"error": f"Authorization failed: Account '{user.username}' is disabled."}},
+            status_code=403
+        )
+    if user.is_expired():
+        logger.warning(f"Stalker access rejected: user '{user.username}' has expired.")
+        return JSONResponse(
+            {"js": {"error": f"Authorization failed: Account '{user.username}' has expired."}},
+            status_code=403
+        )
+
+    # Auto-bind MAC to this user if token-authorized and user has no MAC registered yet
+    if mac and not user.stalker_mac:
+        existing_owner = get_user_by_stalker_mac(mac)
+        if not existing_owner:
+            try:
+                update_user(user.id, stalker_mac=mac)
+                logger.info(f"Auto-bound MAC {mac} to user '{user.username}' upon authorized request.")
+            except Exception as e:
+                logger.warning(f"Failed to auto-bind MAC {mac}: {e}")
+
     effective_mac = mac or user.stalker_mac or "00:1a:79:00:00:01"
     base_url = get_effective_base_url(request)
 
@@ -385,18 +457,7 @@ async def stalker_load(request: Request, token: Optional[str] = None):
 
     # 1. STB Lifecycle Actions
     if req_type == "stb":
-        if action == "handshake":
-            salt = "12345678"
-            stb_token = hashlib.md5(f"{effective_mac}:{salt}:{time.time()}".encode("utf-8")).hexdigest()
-            _save_stb_session(stb_token, user.id, effective_mac)
-            return JSONResponse({
-                "js": {
-                    "token": stb_token,
-                    "random": salt
-                }
-            })
-
-        elif action == "get_profile":
+        if action == "get_profile":
             return JSONResponse({
                 "js": {
                     "id": str(user.id),
@@ -416,22 +477,61 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "timezone": "Europe/Prague",
                     "locale": "cs_CZ.utf8",
                     "city_id": 0,
+                    # Top-level archive capabilities
+                    "tv_archive": 1,
+                    "archive": 1,
+                    "have_archive": 1,
+                    "allow_pvr": 1,
+                    "enable_tv_archive": 1,
+                    "tv_archive_duration": 168,
+                    "archive_duration": 168,
+                    "tv_archive_type": "flussonic",
+                    "timeshift": 1,
+                    "time_shift": 1,
+                    "pvr": 1,
                     "services": {
                         "tv": 1,
                         "video": 1,
                         "radio": 0,
-                        "audio": 0
+                        "audio": 0,
+                        "tv_archive": 1,
+                        "archive": 1,
+                        "pvr": 1,
+                        "time_shift": 1,
+                        "timeshift": 1
                     }
                 }
             })
 
-        elif action in ("get_modules", "do_auth", "log", "set_volume"):
+        elif action in ("get_modules", "set_module"):
             return JSONResponse({
                 "js": {
+                    "all_modules": ["tv", "tv_archive", "time_shift", "epg", "media_browser"],
+                    "switchable_modules": [],
+                    "disabled_modules": [],
+                    "restricted_modules": [],
                     "disabled": [],
                     "default": "itv"
                 } if action == "get_modules" else True
             })
+
+        elif action == "get_settings":
+            return JSONResponse({
+                "js": {
+                    "plasma_saving": "0",
+                    "ts_enabled": "1",
+                    "ts_buffer_use": "all",
+                    "ts_action_on_exit": "no_save",
+                    "ts_delay": "adaptive",
+                    "playback_buffer_bytes": 0,
+                    "playback_buffer_size": 0,
+                    "audio_out": 1,
+                    "spdif_mode": 1
+                }
+            })
+
+        elif action in ("do_auth", "log", "set_volume"):
+            return JSONResponse({"js": True})
 
         elif action == "get_localization":
             return JSONResponse({
@@ -681,10 +781,13 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 is_catchup = 1 if ch.get("catchup") else 0
                 catchup_days = int(ch.get("catchup_duration", 7) or 7) if is_catchup else 0
                 catchup_hours = catchup_days * 24 if is_catchup else 0
+                catchup_source = f"{stream_url}&utc={{utc}}&lutc={{lutc}}"
 
                 stb_channels.append({
                     "id": str(cid),
                     "ch_id": str(cid),
+                    "channel_id": str(cid),
+                    "stream_id": str(cid),
                     "name": cname,
                     "number": str(idx),
                     "censored": 0,
@@ -692,21 +795,45 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "fav": 0,
                     "adult": 0,
                     "status": 1,
+                    # Archive / Catchup capability flags
                     "archive": is_catchup,
                     "tv_archive": is_catchup,
                     "have_archive": is_catchup,
                     "allow_pvr": is_catchup,
                     "allow_record": is_catchup,
+                    "enable_tv_archive": is_catchup,
                     "tv_archive_duration": catchup_hours,
                     "archive_duration": catchup_hours,
+                    "catchup": is_catchup,
+                    "catchup_type": "append",
+                    "catchup_days": catchup_days,
+                    "catchup-days": str(catchup_days),
+                    "catchup_source": catchup_source,
+                    "catchup-source": catchup_source,
+                    "tvg-rec": str(catchup_days),
+                    "timeshift": is_catchup,
+                    "time_shift": is_catchup,
+                    "pvr": is_catchup,
+                    # Genre / Categories
                     "tv_genre_id": str(cat_id),
                     "genre_id": str(cat_id),
+                    # EPG identifiers for universal player compatibility
+                    "tvg": {
+                        "id": str(cid),
+                        "name": cname,
+                        "logo": icon,
+                        "rec": str(catchup_days)
+                    },
                     "tvg_id": str(cid),
                     "tvg-id": str(cid),
+                    "tvgId": str(cid),
                     "tvg_name": cname,
                     "tvg-name": cname,
                     "xmltv_id": str(cid),
+                    "xmltvId": str(cid),
                     "epg_id": str(cid),
+                    "epgId": str(cid),
+                    "custom_sid": str(cid),
                     "logo": icon,
                     "tvg_logo": icon,
                     "cmd": f"ffmpeg {stream_url}"
