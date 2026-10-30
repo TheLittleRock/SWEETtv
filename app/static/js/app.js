@@ -321,6 +321,15 @@ function updateLinksFormat(format) {
         ? `${origin}/epg.xml.gz?token=${token}` 
         : `${origin}/t/${token}/epg.xml.gz`;
     if (inputEpgGz) inputEpgGz.value = epgGzUrl;
+
+    // 7. Stalker Portal
+    const urlStalker = document.getElementById("url-stalker-portal");
+    const btnCopyStalker = document.getElementById("btn-copy-stalker");
+    const stalkerUrl = format === "query"
+        ? `${origin}/c/?token=${token}`
+        : `${origin}/t/${token}/c/`;
+    if (urlStalker) urlStalker.textContent = stalkerUrl;
+    if (btnCopyStalker) btnCopyStalker.setAttribute("data-copy-url", stalkerUrl);
 }
 
 function setLinkFormat(fmt) {

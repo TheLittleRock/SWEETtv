@@ -6,6 +6,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.auth import get_current_user, validate_token_or_session
 from app.config import config
 from app.epg import get_cached_channels
 from app.routes.iptv import clean_id, get_effective_base_url
@@ -36,13 +37,22 @@ def _extract_mac(request: Request, params: Dict[str, Any]) -> str:
 @router.api_route("/load.php", methods=["GET", "POST"])
 @router.api_route("/portal.php", methods=["GET", "POST"])
 @router.api_route("/c/load.php", methods=["GET", "POST"])
+@router.api_route("/c/server/load.php", methods=["GET", "POST"])
 @router.api_route("/server/load.php", methods=["GET", "POST"])
 @router.api_route("/stalker_portal/server/load.php", methods=["GET", "POST"])
 @router.api_route("/stalker_portal/c/load.php", methods=["GET", "POST"])
-async def stalker_load(request: Request):
+@router.api_route("/t/{token}/load.php", methods=["GET", "POST"])
+@router.api_route("/t/{token}/portal.php", methods=["GET", "POST"])
+@router.api_route("/t/{token}/c/load.php", methods=["GET", "POST"])
+@router.api_route("/t/{token}/c/server/load.php", methods=["GET", "POST"])
+@router.api_route("/t/{token}/server/load.php", methods=["GET", "POST"])
+@router.api_route("/t/{token}/stalker_portal/server/load.php", methods=["GET", "POST"])
+@router.api_route("/t/{token}/stalker_portal/c/load.php", methods=["GET", "POST"])
+async def stalker_load(request: Request, token: Optional[str] = None):
     """
     Core Stalker / Ministra Middleware API router.
     Emulates MAG set-top box load.php handler for Live TV, categories, EPG, and playback links.
+    Secured by user token (in URL path /t/{token}/... or query parameter ?token=...).
     """
     params: Dict[str, Any] = dict(request.query_params)
     if request.method == "POST":
@@ -53,21 +63,35 @@ async def stalker_load(request: Request):
         except Exception:
             pass
 
+    token_candidate = token or params.get("token") or params.get("t")
+    try:
+        user = validate_token_or_session(request, token_candidate)
+    except HTTPException as e:
+        logger.warning(f"Stalker authentication failed: {e.detail}")
+        return JSONResponse(
+            {
+                "js": {
+                    "error": f"Authorization failed: {e.detail}"
+                }
+            },
+            status_code=e.status_code
+        )
+
     req_type = str(params.get("type", "")).strip().lower()
     action = str(params.get("action", "")).strip().lower()
     mac = _extract_mac(request, params)
     base_url = get_effective_base_url(request)
 
-    logger.debug(f"Stalker API call: type={req_type}, action={action}, mac={mac}")
+    logger.debug(f"Stalker API call: user={user.username}, type={req_type}, action={action}, mac={mac}")
 
     # 1. STB Lifecycle Actions
     if req_type == "stb":
         if action == "handshake":
             salt = "12345678"
-            token = hashlib.md5(f"{mac}:{salt}".encode("utf-8")).hexdigest()
+            stb_token = hashlib.md5(f"{mac}:{salt}".encode("utf-8")).hexdigest()
             return JSONResponse({
                 "js": {
-                    "token": token,
+                    "token": stb_token,
                     "random": salt
                 }
             })
@@ -75,13 +99,13 @@ async def stalker_load(request: Request):
         elif action == "get_profile":
             return JSONResponse({
                 "js": {
-                    "id": "1",
-                    "name": "SweetTV User",
-                    "sname": "SweetTV User",
+                    "id": str(user.id),
+                    "name": user.username,
+                    "sname": user.username,
                     "ls": "1",
                     "status": "1",
-                    "tariff_plan_name": "Premium",
-                    "account_number": "1001",
+                    "tariff_plan_name": "SweetTV Premium",
+                    "account_number": str(1000 + user.id),
                     "mac": mac,
                     "playback_buffer_bytes": 0,
                     "playback_buffer_size": 0,
@@ -180,7 +204,7 @@ async def stalker_load(request: Request):
                 cid = ch.get("id")
                 cname = (ch.get("name") or f"Channel {cid}").strip()
                 icon = ch.get("icon_v2_url") or ch.get("icon_url") or ""
-                stream_url = f"{base_url}/stream/{cid}.m3u8{q_param}"
+                stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{q_param}"
 
                 is_catchup = 1 if ch.get("catchup") else 0
                 catchup_days = int(ch.get("catchup_duration", 7) or 7) if is_catchup else 0
@@ -229,7 +253,7 @@ async def stalker_load(request: Request):
                     parts = seg.split("?")[0].split("/")
                     if len(parts) >= 2:
                         cid = clean_id(parts[0])
-                        epg_id = parts[1]
+                        epg_id = parts[1].replace(".m3u8", "").strip()
                     else:
                         cid = clean_id(parts[0])
                 except Exception:
@@ -244,9 +268,9 @@ async def stalker_load(request: Request):
             quality = config.default_quality
             q_param = f"?quality={quality}" if quality and quality != "auto" else ""
             if epg_id:
-                final_stream_url = f"{base_url}/stream/{cid}/{epg_id}.m3u8{q_param}"
+                final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}/{epg_id}.m3u8{q_param}"
             else:
-                final_stream_url = f"{base_url}/stream/{cid}.m3u8{q_param}"
+                final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{q_param}"
 
             return JSONResponse({
                 "js": {
@@ -312,9 +336,19 @@ async def stalker_load(request: Request):
 @router.get("/stalker_portal/c", response_class=HTMLResponse)
 @router.get("/stalker_portal/c/", response_class=HTMLResponse)
 @router.get("/stalker_portal/c/index.html", response_class=HTMLResponse)
-def stalker_portal_page(request: Request):
+@router.get("/t/{token}/c", response_class=HTMLResponse)
+@router.get("/t/{token}/c/", response_class=HTMLResponse)
+@router.get("/t/{token}/c/index.html", response_class=HTMLResponse)
+def stalker_portal_page(request: Request, token: Optional[str] = None):
     """Informational landing page when portal URL is visited directly in browser."""
     base_url = get_effective_base_url(request)
+    portal_token = token or request.query_params.get("token") or request.query_params.get("t") or ""
+    if not portal_token:
+        user = get_current_user(request)
+        if user:
+            portal_token = user.token
+
+    portal_url = f"{base_url}/t/{portal_token}/c/" if portal_token else f"{base_url}/t/&lt;váš-token&gt;/c/"
     return HTMLResponse(content=f"""
     <!DOCTYPE html>
     <html lang="cs">
@@ -374,7 +408,7 @@ def stalker_portal_page(request: Request):
             <span class="badge">STALKER / MAG PORTAL ACTIVE</span>
             <h1>SweetTV MAG Portal</h1>
             <p>Tento server emuluje Stalker / MAG Middleware pro IPTV aplikace a set-top boxy (MAG250/322 a emulátory).</p>
-            <div class="url-box">{base_url}/c/</div>
+            <div class="url-box">{portal_url}</div>
             <p>Vložte tuto adresu do nastavení <strong>Stalker portály</strong> ve vaší IPTV aplikaci nebo zařízení.</p>
             <a href="/">← Zpět na webový přehrávač a správu</a>
         </div>

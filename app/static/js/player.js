@@ -405,10 +405,7 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
             maxBufferHole: 0.5,
             highBufferWatchdogPeriod: 2,
             nudgeOffset: 0.2,
-            nudgeMaxRetry: 10,
-            xhrSetup: function(xhr, url) {
-                xhr.withCredentials = true;
-            }
+            nudgeMaxRetry: 10
         });
 
         hlsInstance.loadSource(streamEndpoint);

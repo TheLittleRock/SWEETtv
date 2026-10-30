@@ -339,8 +339,8 @@
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
                         <span class="text-[11px] text-slate-400 block mb-1" data-i18n="links.portal_url">URL Portálu:</span>
                         <div class="flex items-center justify-between">
-                            <span class="font-mono text-blue-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}/c/</span>
-                            <button type="button" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}/c/" data-i18n="links.copy_btn">Kopírovat</button>
+                            <span id="url-stalker-portal" class="font-mono text-blue-300 text-xs font-semibold truncate mr-2 select-all">{{ base_url }}/t/{{ user_token }}/c/</span>
+                            <button type="button" id="btn-copy-stalker" class="btn-copy text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 flex-shrink-0" data-copy-url="{{ base_url }}/t/{{ user_token }}/c/" data-i18n="links.copy_btn">Kopírovat</button>
                         </div>
                     </div>
                     <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
