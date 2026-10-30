@@ -50,3 +50,6 @@ data/*.db
 # OS
 .DS_Store
 Thumbs.db
+
+# Sample manifest dumps
+samples/

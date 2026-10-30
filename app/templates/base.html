@@ -35,6 +35,10 @@
     
     <!-- Hls.js for Video Playback -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        window.SWEET_USER_TOKEN = "{{ user_token }}";
+        window.SWEET_APP_VERSION = "{{ app_version }}";
+    </script>
     
     <!-- Custom Stylesheet with Cache Busting -->
     <link rel="stylesheet" href="/static/css/styles.css?v={{ app_version }}">

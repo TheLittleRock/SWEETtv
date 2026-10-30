@@ -374,11 +374,18 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
                     if (loadingEl) loadingEl.classList.add("hidden");
                     if (unmuteBtn) unmuteBtn.classList.remove("hidden");
                 }).catch(e => {
-                    console.warn("Muted autoplay also blocked:", e);
+                    console.warn("Muted autoplay also blocked (requires user tap):", e);
                     if (loadingEl) loadingEl.classList.add("hidden");
                 });
             });
         }
+
+        // Mobile safety watchdog: ensure loading spinner never blocks video controls indefinitely
+        setTimeout(() => {
+            if (loadingEl && (videoEl.currentTime > 0 || !videoEl.paused)) {
+                loadingEl.classList.add("hidden");
+            }
+        }, 3000);
     }
 
     if (Hls.isSupported()) {
@@ -389,15 +396,19 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
         hlsInstance = new Hls({
             enableWorker: true,
             lowLatencyMode: false, // Disabled for standard CDN to prevent live-edge stalls
-            liveSyncDurationCount: 3, // Safe 3-segment buffer (~6-9s) for instantaneous smooth start
-            liveMaxLatencyDurationCount: 8,
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-            maxBufferSize: 60 * 1000 * 1000,
+            liveSyncDurationCount: 2, // 2-segment buffer (~8s) for fast, reliable live sync on mobile
+            liveMaxLatencyDurationCount: 10, // Generous tolerance for mobile network jitter
+            maxBufferLength: 15,
+            maxMaxBufferLength: 30,
+            backBufferLength: 15, // Free played memory on mobile devices
+            maxBufferSize: 30 * 1000 * 1000, // 30 MB buffer limit for mobile stability
             maxBufferHole: 0.5,
             highBufferWatchdogPeriod: 2,
-            nudgeOffset: 0.1,
-            nudgeMaxRetry: 5,
+            nudgeOffset: 0.2,
+            nudgeMaxRetry: 10,
+            xhrSetup: function(xhr, url) {
+                xhr.withCredentials = true;
+            }
         });
 
         hlsInstance.loadSource(streamEndpoint);
@@ -408,7 +419,12 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
         });
 
         hlsInstance.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
+            if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+                console.warn("Buffer stall detected on live edge, nudging playback...");
+                if (videoEl && !videoEl.paused) {
+                    videoEl.currentTime = videoEl.currentTime + 0.2;
+                }
+            } else if (data.fatal) {
                 if (loadingEl) loadingEl.classList.add("hidden");
                 switch (data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
@@ -434,7 +450,7 @@ function loadHlsStream(streamEndpoint, isCatchup = false, replayTitle = "") {
         videoEl.src = streamEndpoint;
         videoEl.addEventListener("loadedmetadata", () => {
             attemptPlay();
-        });
+        }, { once: true });
     } else {
         if (loadingEl) loadingEl.classList.add("hidden");
         if (typeof showToast === 'function') {
@@ -449,7 +465,9 @@ function playCurrentChannelStream() {
     currentReplayProgram = null;
 
     const quality = qualitySelect ? qualitySelect.value : "1080p";
-    const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}`;
+    const userToken = window.SWEET_USER_TOKEN || "";
+    const tokenParam = userToken ? `&token=${encodeURIComponent(userToken)}` : "";
+    const streamEndpoint = `/stream/${currentChannel.id}.m3u8?quality=${quality}${tokenParam}`;
 
     loadHlsStream(streamEndpoint, false);
 }
@@ -460,7 +478,9 @@ function playCatchupProgram(prog) {
     currentReplayProgram = prog;
 
     const quality = qualitySelect ? qualitySelect.value : "1080p";
-    const streamEndpoint = `/stream/${currentChannel.id}/${prog.id}.m3u8?quality=${quality}`;
+    const userToken = window.SWEET_USER_TOKEN || "";
+    const tokenParam = userToken ? `&token=${encodeURIComponent(userToken)}` : "";
+    const streamEndpoint = `/stream/${currentChannel.id}/${prog.id}.m3u8?quality=${quality}${tokenParam}`;
     const replayTitle = `${prog.title} (${formatProgrammeDate(prog.start)} ${formatTimeHourMin(prog.start)} - ${formatTimeHourMin(prog.stop)})`;
 
     loadHlsStream(streamEndpoint, true, replayTitle);
@@ -759,6 +779,11 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         videoEl.addEventListener("canplay", () => {
             if (loadingEl) loadingEl.classList.add("hidden");
+        });
+        videoEl.addEventListener("timeupdate", () => {
+            if (loadingEl && !loadingEl.classList.contains("hidden")) {
+                loadingEl.classList.add("hidden");
+            }
         });
         videoEl.addEventListener("waiting", () => {
             if (loadingEl) loadingEl.classList.remove("hidden");
