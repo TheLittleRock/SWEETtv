@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
-    <title>Sweet.tv IPTV Server &amp; Web TV</title>
+    <title>SWEETtv + Oneplay (Dev)</title>
     <link rel="icon" type="image/png" href="https://staticeu.sweet.tv/images/v2/icons/categories/1000.png">
     
     <!-- Google Fonts -->
@@ -33,8 +33,9 @@
         }
     </script>
     
-    <!-- Hls.js for Video Playback -->
+    <!-- Video Players: Hls.js & Google Shaka Player (Widevine DRM + DASH + HLS) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.compiled.js"></script>
     <script>
         window.SWEET_USER_TOKEN = "{{ user_token }}";
         window.SWEET_APP_VERSION = "{{ app_version }}";
@@ -44,21 +45,22 @@
     <link rel="stylesheet" href="/static/css/styles.css?v={{ app_version }}">
     {% block head %}{% endblock %}
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-white">
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-amber-500 selection:text-slate-950">
 
     <!-- Top Navigation Bar -->
     <header class="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
         <div class="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 min-h-14 sm:min-h-16 py-1.5 flex items-center justify-between gap-1.5 lg:gap-3">
             <div class="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
                 <a href="/" class="flex items-center gap-2 group">
-                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform flex-shrink-0">
-                        <svg class="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform flex-shrink-0">
+                        <svg class="w-4 h-4 sm:w-5 sm:h-5 text-slate-950 font-bold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                         </svg>
                     </div>
-                    <div class="flex items-center gap-1.5">
-                        <span class="font-extrabold text-base sm:text-lg tracking-tight bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">SWEET<span class="text-white">.tv</span></span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-950/90 text-cyan-300 font-mono font-bold border border-cyan-700/80 shadow-sm" title="Server Version">v{{ app_version }}</span>
+                    <div class="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                        <span class="font-extrabold text-base sm:text-lg tracking-tight bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">SWEET<span class="text-white">.tv</span></span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-950/90 text-amber-300 font-mono font-bold border border-amber-700/80 shadow-sm" title="Server Version">v{{ app_version }}</span>
+                        <span class="text-[9px] uppercase font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 tracking-wider shadow-sm whitespace-nowrap" title="Development Edition with Oneplay">DEV • ONEPLAY</span>
                     </div>
                 </a>
             </div>
@@ -68,6 +70,10 @@
                 <button class="nav-tab active" data-tab="player">
                     <svg class="w-3.5 h-3.5 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     <span data-i18n="nav.live_tv">Živé TV</span>
+                </button>
+                <button class="nav-tab" data-tab="vod">
+                    <svg class="w-3.5 h-3.5 mr-1 flex-shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+                    <span data-i18n="nav.vod">VOD &amp; Nahrávky</span>
                 </button>
                 <button class="nav-tab" data-tab="links">
                     <svg class="w-3.5 h-3.5 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
@@ -137,6 +143,10 @@
         <button class="mobile-nav-tab active flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 rounded-lg flex-shrink-0" data-tab="player">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             <span data-i18n="nav.live_tv">Živé TV</span>
+        </button>
+        <button class="mobile-nav-tab flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 rounded-lg flex-shrink-0" data-tab="vod">
+            <svg class="w-4 h-4 flex-shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+            <span data-i18n="nav.vod">VOD</span>
         </button>
         <button class="mobile-nav-tab flex items-center gap-1 whitespace-nowrap px-2.5 py-1.5 rounded-lg flex-shrink-0" data-tab="links">
             <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>

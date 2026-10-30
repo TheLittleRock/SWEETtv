@@ -84,3 +84,4 @@ class SweetTVProvider(BaseProvider):
     def get_epg_schedule(self, days_back: int = 1, days_forward: int = 1) -> Dict[str, Any]:
         from app.epg import get_cached_channels
         return get_cached_channels(need_epg=True) or {}
+

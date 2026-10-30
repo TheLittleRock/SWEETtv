@@ -203,6 +203,113 @@
     </div>
 
     <!-- ========================================================================= -->
+    <!-- TAB 1.5: VOD & NAHRÁVKY (ONEPLAY) -->
+    <!-- ========================================================================= -->
+    <div id="tab-vod" class="tab-content hidden space-y-6">
+        <div class="border-b border-slate-800 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <span>🎬 Videotéka &amp; Nahrávky</span>
+                    </h2>
+                    <span class="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">Oneplay</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">Filmy, seriály a cloudové nahrávky s Widevine DRM přehráváním přímo ve webovém přehrávači.</p>
+            </div>
+
+            <!-- VOD Search & Controls -->
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <div class="relative flex-1 sm:w-64">
+                    <input type="text" id="vod-search-input" placeholder="Hledat film nebo seriál..." class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-1.5 pl-8 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                    <svg class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                </div>
+                <button type="button" id="btn-refresh-vod" onclick="loadVodCatalog(true)" class="btn-secondary text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 whitespace-nowrap" title="Obnovit katalog">
+                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Obnovit</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- VOD Category Navigation Bar -->
+        <div class="flex items-center gap-2 overflow-x-auto scrollbar-none pb-2 text-xs" id="vod-categories-bar">
+            <button type="button" class="vod-cat-btn px-3 py-1.5 rounded-xl font-bold bg-amber-500 text-slate-950 shadow-md transition-all whitespace-nowrap active" data-category="all" onclick="selectVodCategory('all', this)">
+                ⭐ Vše
+            </button>
+            <button type="button" class="vod-cat-btn px-3 py-1.5 rounded-xl font-medium bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-all whitespace-nowrap" data-category="movies" onclick="selectVodCategory('movies', this)">
+                🎬 Filmy
+            </button>
+            <button type="button" class="vod-cat-btn px-3 py-1.5 rounded-xl font-medium bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-all whitespace-nowrap" data-category="series" onclick="selectVodCategory('series', this)">
+                📺 Seriály
+            </button>
+            <button type="button" class="vod-cat-btn px-3 py-1.5 rounded-xl font-medium bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 transition-all whitespace-nowrap" data-category="recordings" onclick="selectVodCategory('recordings', this)">
+                📼 Nahrávky (Cloud DVR)
+            </button>
+        </div>
+
+        <!-- VOD Loading Indicator -->
+        <div id="vod-loading" class="text-center py-16 hidden">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-amber-500 border-t-transparent mb-2"></div>
+            <div class="text-xs text-slate-400">Načítám videotéku Oneplay...</div>
+        </div>
+
+        <!-- VOD Items Grid -->
+        <div id="vod-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            <!-- Dynamically populated via JS -->
+        </div>
+
+        <!-- VOD Empty State -->
+        <div id="vod-empty" class="text-center py-16 hidden">
+            <div class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto mb-3">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+            </div>
+            <div class="text-sm font-semibold text-slate-300">Žádný obsah k zobrazení</div>
+            <div class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">V této kategorii nebyly nalezeny žádné tituly nebo je potřeba se přihlásit k Oneplay v nastavení.</div>
+        </div>
+
+        <!-- VOD Pagination -->
+        <div id="vod-pagination" class="flex items-center justify-center gap-3 pt-4 border-t border-slate-800/80 hidden">
+            <button type="button" id="btn-vod-prev" onclick="changeVodPage(-1)" class="btn-secondary text-xs px-4 py-2 rounded-xl flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                <span>Předchozí strana</span>
+            </button>
+            <span id="vod-page-info" class="text-xs text-slate-400 font-mono">Strana 1</span>
+            <button type="button" id="btn-vod-next" onclick="changeVodPage(1)" class="btn-secondary text-xs px-4 py-2 rounded-xl flex items-center gap-1.5">
+                <span>Další strana</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Series Episodes Modal -->
+    <div id="series-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+            <!-- Modal Header -->
+            <div class="p-4 sm:p-5 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-900/90">
+                <div class="flex items-center gap-3 min-w-0">
+                    <img id="series-modal-poster" src="" alt="" class="w-12 h-16 rounded-lg object-cover bg-slate-950 border border-slate-800 flex-shrink-0">
+                    <div class="min-w-0">
+                        <h3 id="series-modal-title" class="text-base sm:text-lg font-bold text-white truncate">Seriál</h3>
+                        <p id="series-modal-desc" class="text-xs text-slate-400 line-clamp-2 mt-0.5"></p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeSeriesModal()" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Season Selector Tabs -->
+            <div id="series-seasons-bar" class="p-3 border-b border-slate-800 flex items-center gap-2 overflow-x-auto scrollbar-none bg-slate-950/50">
+                <!-- Season tabs populated dynamically -->
+            </div>
+
+            <!-- Episodes List -->
+            <div id="series-episodes-container" class="p-4 overflow-y-auto space-y-3 flex-1">
+                <!-- Episodes populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- TAB 2: PLAYLISTS & EPG HUB -->
     <!-- ========================================================================= -->
     <div id="tab-links" class="tab-content hidden space-y-6">

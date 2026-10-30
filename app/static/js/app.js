@@ -42,6 +42,10 @@ function switchTab(tabName) {
     if (tabName === "users" && typeof loadUsersList === "function") {
         loadUsersList();
     }
+
+    if (tabName === "vod" && typeof loadVodCatalog === "function") {
+        loadVodCatalog();
+    }
 }
 
 // Toast Notifications
@@ -992,4 +996,320 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initial Status Check & periodic poll
     updateSystemStatus();
     statusInterval = setInterval(updateSystemStatus, 30000);
+
+    // Setup VOD Search listener
+    const vodSearchInput = document.getElementById("vod-search-input");
+    if (vodSearchInput) {
+        let vodSearchTimeout = null;
+        vodSearchInput.addEventListener("input", (e) => {
+            clearTimeout(vodSearchTimeout);
+            vodSearchTimeout = setTimeout(() => {
+                const query = e.target.value.trim();
+                loadVodCatalog(true, query);
+            }, 300);
+        });
+    }
 });
+
+// =========================================================================
+// ONEPLAY VOD CATALOG & SERIES CONTROLLER
+// =========================================================================
+
+let activeVodCategory = "all";
+let currentVodPage = 1;
+let vodCatalogLoaded = false;
+let currentVodItems = [];
+
+function selectVodCategory(catId, btnEl) {
+    activeVodCategory = catId;
+    currentVodPage = 1;
+
+    // Update active button state
+    document.querySelectorAll(".vod-cat-btn").forEach(btn => {
+        btn.classList.remove("active", "bg-amber-500", "text-slate-950", "shadow-md", "font-bold");
+        btn.classList.add("bg-slate-900", "text-slate-300", "border-slate-800", "font-medium");
+    });
+    if (btnEl) {
+        btnEl.classList.remove("bg-slate-900", "text-slate-300", "border-slate-800", "font-medium");
+        btnEl.classList.add("active", "bg-amber-500", "text-slate-950", "shadow-md", "font-bold");
+    }
+
+    const searchInput = document.getElementById("vod-search-input");
+    if (searchInput) searchInput.value = "";
+
+    loadVodCatalog(true);
+}
+
+async function loadVodCatalog(force = false, searchQuery = "") {
+    if (vodCatalogLoaded && !force && !searchQuery) return;
+
+    const loadingEl = document.getElementById("vod-loading");
+    const gridEl = document.getElementById("vod-grid");
+    const emptyEl = document.getElementById("vod-empty");
+    const paginationEl = document.getElementById("vod-pagination");
+    const pageInfoEl = document.getElementById("vod-page-info");
+
+    if (loadingEl) loadingEl.classList.remove("hidden");
+    if (gridEl) gridEl.classList.add("hidden");
+    if (emptyEl) emptyEl.classList.add("hidden");
+    if (paginationEl) paginationEl.classList.add("hidden");
+
+    try {
+        let url = `/api/provider/oneplay/vod/items?category=${encodeURIComponent(activeVodCategory)}&page=${currentVodPage}`;
+        if (searchQuery) {
+            url += `&query=${encodeURIComponent(searchQuery)}`;
+        }
+
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+        }
+
+        const data = await res.json();
+        const items = data.items || [];
+        currentVodItems = items;
+        vodCatalogLoaded = true;
+
+        if (loadingEl) loadingEl.classList.add("hidden");
+
+        if (items.length === 0) {
+            if (emptyEl) emptyEl.classList.remove("hidden");
+            if (gridEl) {
+                gridEl.innerHTML = "";
+                gridEl.classList.remove("hidden");
+            }
+            return;
+        }
+
+        renderVodGrid(items);
+
+        if (gridEl) gridEl.classList.remove("hidden");
+        if (paginationEl && !searchQuery) {
+            paginationEl.classList.remove("hidden");
+            if (pageInfoEl) pageInfoEl.textContent = `Strana ${currentVodPage}`;
+            const prevBtn = document.getElementById("btn-vod-prev");
+            if (prevBtn) prevBtn.disabled = currentVodPage <= 1;
+        }
+
+    } catch (err) {
+        console.error("Failed to load VOD catalog:", err);
+        if (loadingEl) loadingEl.classList.add("hidden");
+        if (emptyEl) emptyEl.classList.remove("hidden");
+        showToast("Nepodařilo se načíst videotéku Oneplay.", "error");
+    }
+}
+
+function renderVodGrid(items) {
+    const gridEl = document.getElementById("vod-grid");
+    if (!gridEl) return;
+
+    gridEl.innerHTML = items.map((item, idx) => {
+        const isSeries = item.content_type === "show";
+        const isRecording = item.content_type === "recording" || activeVodCategory === "recordings";
+        const posterUrl = item.image || "https://staticeu.sweet.tv/images/v2/icons/categories/1000.png";
+        const typeBadge = isSeries ? "Seriál" : (isRecording ? "Nahrávka" : "Film");
+        const typeBadgeClass = isSeries ? "bg-purple-950 text-purple-300 border-purple-800" : (isRecording ? "bg-amber-950 text-amber-300 border-amber-800" : "bg-blue-950 text-blue-300 border-blue-800");
+
+        return `
+            <div class="vod-card group" onclick="handleVodClick(${idx})">
+                <div class="vod-poster-wrap">
+                    <img src="${posterUrl}" alt="${item.title}" class="vod-poster" loading="lazy" onerror="this.src='https://staticeu.sweet.tv/images/v2/icons/categories/1000.png'">
+                    <div class="absolute top-2 left-2 flex items-center gap-1">
+                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ${typeBadgeClass}">${typeBadge}</span>
+                    </div>
+                    <div class="absolute top-2 right-2 flex items-center gap-1">
+                        ${item.is_drm ? '<span class="badge-drm">DRM</span>' : '<span class="text-[9px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800 px-1 py-0.5 rounded font-bold">FREE</span>'}
+                    </div>
+                    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-3">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/40 transform scale-90 group-hover:scale-100 transition-transform">
+                            <svg class="w-6 h-6 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-2.5 sm:p-3 flex flex-col justify-between flex-1">
+                    <div>
+                        <h4 class="text-xs sm:text-sm font-bold text-white line-clamp-1 group-hover:text-amber-400 transition-colors">${item.title}</h4>
+                        ${item.description ? `<p class="text-[11px] text-slate-400 line-clamp-2 mt-1">${item.description}</p>` : ''}
+                    </div>
+                    ${item.year ? `<div class="text-[10px] text-slate-500 font-mono mt-2">${item.year}</div>` : ''}
+                </div>
+            </div>
+        `;
+    }).join("");
+}
+
+function handleVodClick(itemIdx) {
+    const item = currentVodItems[itemIdx];
+    if (!item) return;
+
+    if (item.content_type === "show") {
+        openSeriesModal(item);
+    } else {
+        playVodItem(item);
+    }
+}
+
+async function playVodItem(item) {
+    showToast(`Načítám přehrávání: ${item.title}...`, "info");
+    try {
+        const res = await fetch("/api/provider/oneplay/vod/play", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(item.payload || {})
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Chyba při spuštění přehrávání.");
+        }
+
+        const streamInfo = await res.json();
+        if (typeof window.playVodStream === "function") {
+            window.playVodStream(item, streamInfo);
+        } else {
+            showToast("Přehrávač není připraven.", "error");
+        }
+    } catch (err) {
+        console.error("Failed to start VOD stream:", err);
+        showToast(err.message || "Chyba při spuštění přehrávání.", "error");
+    }
+}
+
+function changeVodPage(delta) {
+    const newPage = currentVodPage + delta;
+    if (newPage < 1) return;
+    currentVodPage = newPage;
+    loadVodCatalog(true);
+}
+
+// Series Modal Controller
+async function openSeriesModal(item) {
+    const modal = document.getElementById("series-modal");
+    if (!modal) return;
+
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+
+    const titleEl = document.getElementById("series-modal-title");
+    const descEl = document.getElementById("series-modal-desc");
+    const posterEl = document.getElementById("series-modal-poster");
+    const seasonsBar = document.getElementById("series-seasons-bar");
+    const epContainer = document.getElementById("series-episodes-container");
+
+    if (titleEl) titleEl.textContent = item.title;
+    if (descEl) descEl.textContent = item.description || "";
+    if (posterEl) posterEl.src = item.image || "";
+
+    if (seasonsBar) seasonsBar.innerHTML = '<div class="text-xs text-slate-400 py-1">Načítám série...</div>';
+    if (epContainer) epContainer.innerHTML = '<div class="text-xs text-slate-400 py-4 text-center">Načítám epizody...</div>';
+
+    try {
+        const res = await fetch("/api/provider/oneplay/vod/series", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(item.payload || {})
+        });
+
+        if (!res.ok) throw new Error("Chyba při načítání detailu seriálu.");
+        const detail = await res.json();
+
+        if (detail.description && descEl) {
+            descEl.textContent = detail.description;
+        }
+
+        const seasons = detail.seasons || [];
+        if (seasons.length > 0) {
+            seasonsBar.innerHTML = seasons.map((s, idx) => `
+                <button type="button" class="series-season-btn px-3 py-1 rounded-xl text-xs font-semibold ${idx === 0 ? 'bg-amber-500 text-slate-950 active' : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'}" onclick="selectSeriesSeason('${s.carouselId}', ${JSON.stringify(s.criteria).replace(/"/g, '&quot;')}, this)">
+                    ${s.label}
+                </button>
+            `).join("");
+
+            // Load first season
+            selectSeriesSeason(seasons[0].carouselId, seasons[0].criteria, seasonsBar.children[0]);
+        } else if (detail.episodes && detail.episodes.length > 0) {
+            seasonsBar.innerHTML = '<span class="text-xs text-slate-400 font-semibold px-2">Všechny díly</span>';
+            renderEpisodes(detail.episodes);
+        } else {
+            epContainer.innerHTML = '<div class="text-xs text-slate-500 py-4 text-center">Nebyly nalezeny žádné epizody.</div>';
+        }
+
+    } catch (err) {
+        console.error("Series detail fetch failed:", err);
+        if (epContainer) epContainer.innerHTML = '<div class="text-xs text-red-400 py-4 text-center">Chyba při načítání epizod.</div>';
+    }
+}
+
+async function selectSeriesSeason(carouselId, criteria, btnEl) {
+    const epContainer = document.getElementById("series-episodes-container");
+    if (epContainer) epContainer.innerHTML = '<div class="text-xs text-slate-400 py-4 text-center">Načítám díly série...</div>';
+
+    document.querySelectorAll(".series-season-btn").forEach(btn => {
+        btn.classList.remove("active", "bg-amber-500", "text-slate-950");
+        btn.classList.add("bg-slate-900", "text-slate-300", "border-slate-800");
+    });
+    if (btnEl) {
+        btnEl.classList.remove("bg-slate-900", "text-slate-300", "border-slate-800");
+        btnEl.classList.add("active", "bg-amber-500", "text-slate-950");
+    }
+
+    try {
+        const res = await fetch(`/api/provider/oneplay/vod/season?carousel_id=${encodeURIComponent(carouselId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(criteria)
+        });
+        if (!res.ok) throw new Error("Chyba při načítání dílů série.");
+        const data = await res.json();
+        renderEpisodes(data.episodes || []);
+    } catch (err) {
+        console.error("Failed to load season episodes:", err);
+        if (epContainer) epContainer.innerHTML = '<div class="text-xs text-red-400 py-4 text-center">Chyba při načítání dílů této série.</div>';
+    }
+}
+
+function renderEpisodes(episodes) {
+    const epContainer = document.getElementById("series-episodes-container");
+    if (!epContainer) return;
+
+    if (!episodes || episodes.length === 0) {
+        epContainer.innerHTML = '<div class="text-xs text-slate-500 py-4 text-center">Žádné epizody v této sérii.</div>';
+        return;
+    }
+
+    epContainer.innerHTML = episodes.map((ep, idx) => {
+        const poster = ep.image || "https://staticeu.sweet.tv/images/v2/icons/categories/1000.png";
+        return `
+            <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-amber-500/50 transition-all">
+                <div class="flex items-center gap-3 min-w-0">
+                    <img src="${poster}" alt="" class="w-16 h-10 object-cover rounded-lg bg-slate-900 border border-slate-800 flex-shrink-0" onerror="this.src='https://staticeu.sweet.tv/images/v2/icons/categories/1000.png'">
+                    <div class="min-w-0">
+                        <div class="text-xs font-bold text-white truncate">${ep.title}</div>
+                        ${ep.description ? `<div class="text-[11px] text-slate-400 line-clamp-1 mt-0.5">${ep.description}</div>` : ''}
+                    </div>
+                </div>
+                <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded-xl whitespace-nowrap flex items-center gap-1.5 flex-shrink-0" onclick="playEpisode(${idx})">
+                    <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <span>Přehrát</span>
+                </button>
+            </div>
+        `;
+    }).join("");
+
+    window._currentEpisodes = episodes;
+}
+
+function playEpisode(idx) {
+    const ep = (window._currentEpisodes || [])[idx];
+    if (!ep) return;
+    closeSeriesModal();
+    playVodItem(ep);
+}
+
+function closeSeriesModal() {
+    const modal = document.getElementById("series-modal");
+    if (modal) {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    }
+}

@@ -55,3 +55,4 @@ class BaseProvider(ABC):
     def get_epg_schedule(self, days_back: int = 1, days_forward: int = 1) -> Dict[str, Any]:
         """Returns raw schedule or XMLTV-compatible schedule data."""
         pass
+

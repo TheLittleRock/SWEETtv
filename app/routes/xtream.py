@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.auth import authenticate_user
 from app.config import config
@@ -15,6 +15,9 @@ from app.stream import build_proxy_master_m3u8, resolve_epg_id_from_utc, safe_pa
 
 logger = logging.getLogger("SweetTV.Routes.Xtream")
 router = APIRouter(tags=["Xtream Codes API"])
+
+_vod_cache_by_id: Dict[int, Dict[str, Any]] = {}
+_series_cache_by_id: Dict[int, Dict[str, Any]] = {}
 
 
 def validate_xtream_user(username: Optional[str], password: Optional[str]) -> bool:
@@ -182,40 +185,251 @@ async def player_api(
         except ValueError:
             return JSONResponse(content={"epg_listings": []})
 
-        data = get_cached_channels(need_epg=True)
         listings = []
-        for ch in (data.get("list", []) if data else []):
-            if ch.get("id") == target_cid:
-                has_catchup = bool(ch.get("catchup"))
-                for p in ch.get("epg", []):
-                    t_start = p.get("time_start", 0)
-                    t_stop = p.get("time_stop", 0)
-                    if not t_start or not t_stop:
-                        continue
-                    listings.append({
-                        "id": str(p.get("id", "")),
-                        "epg_id": str(p.get("id", "")),
-                        "title": p.get("text", ""),
-                        "lang": "cs",
-                        "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
-                        "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
-                        "description": p.get("description") or p.get("genre") or "",
-                        "channel_id": str(target_cid),
-                        "start_timestamp": t_start,
-                        "stop_timestamp": t_stop,
-                        "now_playing": 1 if t_start <= now < t_stop else 0,
-                        "has_archive": 1 if (has_catchup and p.get("available")) else 0
-                    })
-                break
+        if target_cid >= 10000:
+            if config.oneplay_enabled and config.is_oneplay_logged:
+                op_channels = provider_manager.oneplay.get_channels()
+                target_ch = next((c for c in op_channels if (10000 + int(c.get("channel_number", 0))) == target_cid), None)
+                if target_ch:
+                    raw_progs = provider_manager.oneplay.get_channel_epg(target_ch["id"])
+                    for p in raw_progs:
+                        t_start = p.get("time_start", 0)
+                        t_stop = p.get("time_stop", 0)
+                        if not t_start or not t_stop:
+                            continue
+                        listings.append({
+                            "id": str(p.get("id", "")),
+                            "epg_id": str(p.get("id", "")),
+                            "title": p.get("title", ""),
+                            "lang": "cs",
+                            "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
+                            "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
+                            "description": p.get("description") or "",
+                            "channel_id": str(target_cid),
+                            "start_timestamp": t_start,
+                            "stop_timestamp": t_stop,
+                            "now_playing": 1 if t_start <= now < t_stop else 0,
+                            "has_archive": 1 if p.get("can_replay") else 0
+                        })
+        else:
+            data = get_cached_channels(need_epg=True)
+            for ch in (data.get("list", []) if data else []):
+                if ch.get("id") == target_cid:
+                    has_catchup = bool(ch.get("catchup"))
+                    for p in ch.get("epg", []):
+                        t_start = p.get("time_start", 0)
+                        t_stop = p.get("time_stop", 0)
+                        if not t_start or not t_stop:
+                            continue
+                        listings.append({
+                            "id": str(p.get("id", "")),
+                            "epg_id": str(p.get("id", "")),
+                            "title": p.get("text", ""),
+                            "lang": "cs",
+                            "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
+                            "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
+                            "description": p.get("description") or p.get("genre") or "",
+                            "channel_id": str(target_cid),
+                            "start_timestamp": t_start,
+                            "stop_timestamp": t_stop,
+                            "now_playing": 1 if t_start <= now < t_stop else 0,
+                            "has_archive": 1 if (has_catchup and p.get("available")) else 0
+                        })
+                    break
 
         if limit and limit > 0:
             listings = listings[:limit]
 
         return JSONResponse(content={"epg_listings": listings})
 
-    # 5. VOD & Series stubs
-    if action in ("get_vod_categories", "get_vod_streams", "get_series_categories", "get_series"):
-        return JSONResponse(content=[])
+    # 5. VOD Categories
+    if action == "get_vod_categories":
+        return JSONResponse(content=[
+            {"category_id": "3000", "category_name": "[Oneplay] Filmy", "parent_id": 0},
+            {"category_id": "3001", "category_name": "[Oneplay] Nahrávky (Cloud DVR)", "parent_id": 0},
+        ])
+
+    # 6. VOD Streams
+    if action == "get_vod_streams":
+        vod_out = []
+        if config.oneplay_enabled and config.is_oneplay_logged:
+            cat_filter = str(category_id) if category_id else None
+            items = []
+            if cat_filter == "3001":
+                items = provider_manager.oneplay.get_recordings()
+            else:
+                res = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+                items = res.get("items") or []
+
+            idx = 0
+            for it in items:
+                idx += 1
+                sid = (31000 if cat_filter == "3001" else 30000) + idx
+                _vod_cache_by_id[sid] = it
+                title = it.get("title", "")
+                if it.get("is_drm"):
+                    title = f"{title} [DRM]"
+                vod_out.append({
+                    "num": idx,
+                    "name": title,
+                    "stream_type": "movie",
+                    "stream_id": sid,
+                    "stream_icon": it.get("image", ""),
+                    "rating": "7.5",
+                    "rating_5based": 3.75,
+                    "added": "1600000000",
+                    "category_id": cat_filter or "3000",
+                    "container_extension": "m3u8",
+                    "custom_sid": "",
+                    "direct_source": ""
+                })
+        return JSONResponse(content=vod_out)
+
+    # 7. VOD Info
+    if action == "get_vod_info":
+        vid = int(vod_id or 0)
+        item = _vod_cache_by_id.get(vid)
+        name = item.get("title", "Film") if item else "Film"
+        poster = item.get("image", "") if item else ""
+        desc = item.get("description", "") if item else ""
+        return JSONResponse(content={
+            "info": {
+                "name": name,
+                "cover_big": poster,
+                "movie_image": poster,
+                "plot": desc,
+                "cast": "",
+                "director": "",
+                "genre": "Oneplay",
+                "release_date": item.get("year", "2024") if item else "2024",
+                "duration_secs": item.get("duration", 7200) if item else 7200,
+                "duration": "02:00:00",
+                "video": {},
+                "audio": {},
+                "bitrate": 5000000
+            },
+            "movie_data": {
+                "stream_id": vid,
+                "name": name,
+                "container_extension": "m3u8"
+            }
+        })
+
+    # 8. Series Categories
+    if action == "get_series_categories":
+        return JSONResponse(content=[
+            {"category_id": "4000", "category_name": "[Oneplay] Seriály", "parent_id": 0}
+        ])
+
+    # 9. Series List
+    if action == "get_series":
+        series_out = []
+        if config.oneplay_enabled and config.is_oneplay_logged:
+            res = provider_manager.oneplay.get_vod_items(category="series", page=1)
+            items = res.get("items") or []
+            idx = 0
+            for it in items:
+                idx += 1
+                sid = 40000 + idx
+                _series_cache_by_id[sid] = it
+                series_out.append({
+                    "num": idx,
+                    "name": it.get("title", ""),
+                    "series_id": sid,
+                    "cover": it.get("image", ""),
+                    "plot": it.get("description", ""),
+                    "cast": "",
+                    "director": "",
+                    "genre": "Seriál",
+                    "releaseDate": it.get("year", "2024"),
+                    "last_modified": "1600000000",
+                    "rating": "8.0",
+                    "rating_5based": 4.0,
+                    "category_id": "4000"
+                })
+        return JSONResponse(content=series_out)
+
+    # 10. Series Info (Seasons & Episodes)
+    if action == "get_series_info":
+        sid = int(series_id or 0)
+        s_item = _series_cache_by_id.get(sid)
+        if not s_item or not s_item.get("payload"):
+            return JSONResponse(content={"seasons": [], "info": {}, "episodes": {}})
+
+        detail = provider_manager.oneplay.get_series_detail(s_item["payload"])
+        seasons_meta = []
+        episodes_map: Dict[str, List[Dict[str, Any]]] = {}
+
+        seasons = detail.get("seasons") or []
+        if seasons:
+            s_num = 0
+            for season in seasons:
+                s_num += 1
+                s_key = str(s_num)
+                seasons_meta.append({
+                    "season_number": s_num,
+                    "name": season.get("label", f"{s_num}. série"),
+                    "episode_count": 0,
+                    "id": s_num,
+                    "air_date": "2024"
+                })
+                # Fetch season episodes
+                eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
+                ep_list = []
+                ep_num = 0
+                for ep in eps:
+                    ep_num += 1
+                    ep_sid = (sid * 100) + ep_num
+                    _vod_cache_by_id[ep_sid] = ep
+                    ep_list.append({
+                        "id": ep_sid,
+                        "episode_num": ep_num,
+                        "title": ep.get("title", f"Díl {ep_num}"),
+                        "container_extension": "m3u8",
+                        "info": {
+                            "name": ep.get("title", ""),
+                            "plot": ep.get("description", ""),
+                            "duration_secs": ep.get("duration", 3000),
+                            "movie_image": ep.get("image", "")
+                        }
+                    })
+                episodes_map[s_key] = ep_list
+        elif detail.get("episodes"):
+            # Direct episodes
+            seasons_meta.append({"season_number": 1, "name": "1. série", "episode_count": len(detail["episodes"]), "id": 1, "air_date": "2024"})
+            ep_list = []
+            ep_num = 0
+            for ep in detail["episodes"]:
+                ep_num += 1
+                ep_sid = (sid * 100) + ep_num
+                _vod_cache_by_id[ep_sid] = ep
+                ep_list.append({
+                    "id": ep_sid,
+                    "episode_num": ep_num,
+                    "title": ep.get("title", f"Díl {ep_num}"),
+                    "container_extension": "m3u8",
+                    "info": {
+                        "name": ep.get("title", ""),
+                        "plot": ep.get("description", ""),
+                        "duration_secs": ep.get("duration", 3000),
+                        "movie_image": ep.get("image", "")
+                    }
+                })
+            episodes_map["1"] = ep_list
+
+        return JSONResponse(content={
+            "seasons": seasons_meta,
+            "info": {
+                "name": detail.get("title", s_item.get("title")),
+                "cover": detail.get("image", s_item.get("image")),
+                "plot": detail.get("description", s_item.get("description")),
+                "genre": "Oneplay Series",
+                "releaseDate": s_item.get("year", "2024"),
+                "rating": "8.0",
+                "rating_5based": 4.0
+            },
+            "episodes": episodes_map
+        })
 
     return JSONResponse(content={"message": f"Action {action} not handled", "status": "OK"})
 
@@ -360,3 +574,61 @@ def xtream_timeshift_stream(
             "Cache-Control": "no-cache, no-store, must-revalidate",
         }
     )
+
+
+# =========================================================================
+# XTREAM CODES VOD & SERIES PLAYBACK ENDPOINTS
+# =========================================================================
+
+@router.get("/movie/{username}/{password}/{stream_id}.m3u8")
+@router.get("/movie/{username}/{password}/{stream_id}.ts")
+@router.get("/movie/{username}/{password}/{stream_id}.mp4")
+@router.get("/movie/{username}/{password}/{stream_id}")
+def xtream_movie_stream(
+    request: Request,
+    username: str,
+    password: str,
+    stream_id: str
+):
+    """Playback endpoint for Xtream Codes VOD movies and cloud recordings."""
+    if not validate_xtream_user(username, password):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
+    try:
+        sid_int = int(clean_id(stream_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid stream ID.")
+
+    item = _vod_cache_by_id.get(sid_int)
+    if not item or not item.get("payload"):
+        raise HTTPException(status_code=404, detail="VOD item not found or expired.")
+
+    stream_info = provider_manager.oneplay.get_vod_stream(item["payload"])
+    if not stream_info or not stream_info.get("url"):
+        raise HTTPException(status_code=502, detail="Failed to resolve VOD stream from Oneplay.")
+
+    if stream_info.get("manifest_type") == "hls":
+        base_url = get_effective_base_url(request)
+        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["url"], base_url)
+        return Response(
+            content=rewritten,
+            media_type="application/vnd.apple.mpegurl",
+            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"}
+        )
+
+    return RedirectResponse(url=stream_info["url"], status_code=302)
+
+
+@router.get("/series/{username}/{password}/{stream_id}.m3u8")
+@router.get("/series/{username}/{password}/{stream_id}.ts")
+@router.get("/series/{username}/{password}/{stream_id}.mp4")
+@router.get("/series/{username}/{password}/{stream_id}")
+def xtream_series_stream(
+    request: Request,
+    username: str,
+    password: str,
+    stream_id: str
+):
+    """Playback endpoint for Xtream Codes TV series episodes."""
+    return xtream_movie_stream(request, username, password, stream_id)
+

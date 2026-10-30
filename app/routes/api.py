@@ -1,7 +1,9 @@
 import logging
 import time
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from urllib.error import HTTPError
+from urllib.request import Request as URLRequest, urlopen
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 
 from app.auth import (
@@ -603,10 +605,54 @@ def get_channels_api(
 
 @router.get("/channel/{channel_id}/epg")
 def get_channel_epg_schedule(
-    channel_id: int,
+    channel_id: str,
     current_user: User = Depends(require_user)
 ) -> Dict[str, Any]:
-    """Returns full program schedule with catchup availability for a channel."""
+    """Returns full program schedule with catchup availability for a channel (Sweet.tv or Oneplay)."""
+    clean_cid = str(channel_id).replace("oneplay:", "").strip()
+    is_oneplay = str(channel_id).startswith("oneplay:") or "~" in clean_cid or not clean_cid.isdigit()
+
+    if not is_oneplay:
+        op_channels = {c["id"]: c for c in provider_manager.oneplay.get_channels()}
+        if clean_cid in op_channels:
+            is_oneplay = True
+
+    now = int(time.time())
+
+    # Oneplay Channel EPG
+    if is_oneplay:
+        if not (config.oneplay_enabled and config.is_oneplay_logged):
+            if not provider_manager.oneplay.ensure_authenticated():
+                raise HTTPException(status_code=401, detail="Oneplay přihlášení vyžadováno.")
+
+        raw_programs = provider_manager.oneplay.get_channel_epg(clean_cid)
+        programs = []
+        for p in raw_programs:
+            t_start = p.get("time_start", 0)
+            t_stop = p.get("time_stop", 0)
+            programs.append({
+                "id": str(p.get("id")),
+                "title": p.get("title", ""),
+                "description": p.get("description", ""),
+                "start": t_start,
+                "stop": t_stop,
+                "available": True,
+                "is_past": t_stop <= (now - 5),
+                "is_current": t_start <= now < t_stop,
+                "can_replay": bool(p.get("can_replay")),
+                "cover": p.get("cover", ""),
+                "payload": p.get("payload", {})
+            })
+
+        return {
+            "channel_id": clean_cid,
+            "name": f"Oneplay {clean_cid}",
+            "catchup": True,
+            "catchup_duration": 7,
+            "programs": programs
+        }
+
+    # Sweet.tv numeric channel
     if not config.is_logged:
         raise HTTPException(status_code=401, detail="Sweet.tv login required.")
 
@@ -614,9 +660,9 @@ def get_channel_epg_schedule(
     if not data or data.get("status") != "OK":
         raise HTTPException(status_code=502, detail="Failed to fetch EPG")
 
-    now = int(time.time())
+    target_int = int(clean_cid) if clean_cid.isdigit() else 0
     for ch in data.get("list", []):
-        if ch.get("id") == channel_id:
+        if ch.get("id") == target_int:
             programs = []
             for p in ch.get("epg", []):
                 programs.append({
@@ -630,7 +676,7 @@ def get_channel_epg_schedule(
                     "can_replay": bool(ch.get("catchup") and p.get("available") and p.get("id")),
                 })
             return {
-                "channel_id": channel_id,
+                "channel_id": target_int,
                 "name": ch.get("name"),
                 "catchup": ch.get("catchup", False),
                 "catchup_duration": ch.get("catchup_duration", 7),
@@ -735,3 +781,112 @@ def refresh_cache(admin: User = Depends(require_admin)) -> Dict[str, Any]:
     invalidate_cache()
     get_cached_channels(force_refresh=True)
     return {"status": "OK"}
+
+
+# =========================================================================
+# ONEPLAY VOD & DRM LICENSE PROXY ENDPOINTS
+# =========================================================================
+
+@router.get("/provider/oneplay/vod/categories")
+def get_oneplay_vod_categories_api(
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
+    """Returns top-level VOD categories from Oneplay."""
+    categories = provider_manager.oneplay.get_vod_categories()
+    return {"categories": categories}
+
+
+@router.get("/provider/oneplay/vod/items")
+def get_oneplay_vod_items_api(
+    category: str = Query("all", description="Category ID: 'all', 'movies', 'series', 'recordings', etc."),
+    page: int = Query(1, ge=1, description="Page number"),
+    query: Optional[str] = Query(None, description="Search query string"),
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
+    """Returns paginated VOD catalog items for movies, series, or cloud recordings."""
+    return provider_manager.oneplay.get_vod_items(category=category, page=page, query=query)
+
+
+@router.post("/provider/oneplay/vod/series")
+def get_oneplay_series_detail_api(
+    payload: Dict[str, Any] = Body(..., description="Show payload"),
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
+    """Returns seasons and episodes list for a TV series."""
+    return provider_manager.oneplay.get_series_detail(payload)
+
+
+@router.post("/provider/oneplay/vod/season")
+def get_oneplay_season_episodes_api(
+    carousel_id: str = Query(..., description="Season carousel ID"),
+    criteria: Any = Body(..., description="Season criteria"),
+    sort_order: str = Query("ASC", description="Sort order: ASC or DESC"),
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
+    """Returns episode tiles for a specific series season."""
+    episodes = provider_manager.oneplay.get_season_episodes(carousel_id, criteria, sort_order)
+    return {"episodes": episodes}
+
+
+@router.post("/provider/oneplay/vod/play")
+def get_oneplay_vod_play_stream_api(
+    payload: Dict[str, Any] = Body(..., description="VOD item play payload"),
+    current_user: User = Depends(require_user)
+) -> Dict[str, Any]:
+    """
+    Obtains stream playback info (manifest URL and Widevine DRM parameters) for a VOD item.
+    """
+    stream_info = provider_manager.oneplay.get_vod_stream(payload)
+    if not stream_info:
+        raise HTTPException(status_code=502, detail="Failed to retrieve VOD stream from Oneplay.")
+    return stream_info
+
+
+@router.post("/provider/oneplay/drm-license")
+async def oneplay_drm_license_proxy(
+    request: Request,
+    target: Optional[str] = Query(None, description="Target Axinom License Acquisition URL"),
+    token: Optional[str] = Query(None, description="Axinom DRM Message Token")
+):
+    """
+    Proxies raw binary Widevine CDM challenge from Shaka Player to Axinom license server.
+    Appends required 'X-AxDRM-Message' token and forwards binary Widevine license.
+    """
+    license_url = target or request.headers.get("X-Target-License-Url")
+    drm_token = token or request.headers.get("X-AxDRM-Message")
+
+    if not license_url:
+        raise HTTPException(status_code=400, detail="Missing target Axinom license URL")
+
+    # Read binary challenge bytes from Shaka Player
+    challenge_bytes = await request.body()
+
+    headers = {
+        "User-Agent": provider_manager.oneplay.api.ua,
+        "Content-Type": "application/octet-stream",
+        "Accept": "*/*",
+    }
+    if drm_token:
+        headers["X-AxDRM-Message"] = drm_token
+
+    try:
+        req = URLRequest(license_url, data=challenge_bytes, headers=headers)
+        with urlopen(req, timeout=12) as resp:
+            license_bytes = resp.read()
+            return Response(
+                content=license_bytes,
+                media_type="application/octet-stream",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS",
+                }
+            )
+    except HTTPError as e:
+        err_msg = e.read().decode("utf-8", errors="replace")
+        logger.error(f"Axinom DRM license proxy HTTP {e.code}: {err_msg}")
+        raise HTTPException(status_code=e.code, detail=f"Axinom DRM error: {err_msg}")
+    except Exception as e:
+        logger.error(f"Axinom DRM license proxy unexpected error: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+

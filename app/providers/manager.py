@@ -1,3 +1,4 @@
+import gzip
 import logging
 import threading
 import time
@@ -215,6 +216,12 @@ class ProviderManager:
 
         return ET.tostring(xml_root, encoding="utf-8", xml_declaration=True).decode("utf-8")
 
+    def generate_xmltv_epg_gz(self, source: Optional[str] = None) -> bytes:
+        """Returns gzipped XMLTV EPG for fast client downloads."""
+        xml_str = self.generate_xmltv_epg(source=source)
+        return gzip.compress(xml_str.encode("utf-8"), compresslevel=6)
+
 
 # Global ProviderManager singleton
 provider_manager = ProviderManager()
+

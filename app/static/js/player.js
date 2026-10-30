@@ -903,3 +903,118 @@ document.addEventListener("DOMContentLoaded", () => {
     window.loadChannels = loadChannels;
     loadChannels();
 });
+
+// =========================================================================
+// GOOGLE SHAKA PLAYER & VOD PLAYBACK (WIDEVINE DRM + DASH + CLEAR HLS)
+// =========================================================================
+
+let shakaPlayerInstance = null;
+
+async function initShakaPlayerIfNeeded() {
+    if (typeof shaka === "undefined") {
+        console.warn("Google Shaka Player library is not loaded.");
+        return null;
+    }
+    shaka.polyfill.installAll();
+    if (!shaka.Player.isBrowserSupported()) {
+        console.error("Browser does not support Shaka Player or Encrypted Media Extensions (EME).");
+        return null;
+    }
+    if (!shakaPlayerInstance && videoEl) {
+        shakaPlayerInstance = new shaka.Player(videoEl);
+        shakaPlayerInstance.addEventListener('error', (event) => {
+            console.error('Shaka Player error:', event.detail);
+            if (typeof showToast === 'function') {
+                showToast(`Chyba přehrávače: ${event.detail.message || event.detail.code}`, "error");
+            }
+        });
+    }
+    return shakaPlayerInstance;
+}
+
+async function playVodStream(vodItem, streamInfo) {
+    if (!videoEl || !streamInfo) return;
+
+    if (placeholderEl) placeholderEl.classList.add("hidden");
+    if (loadingEl) loadingEl.classList.remove("hidden");
+    const unmuteBtn = document.getElementById("btn-unmute-overlay");
+    if (unmuteBtn) unmuteBtn.classList.add("hidden");
+
+    // Clean up any running Hls.js instance
+    if (hlsInstance) {
+        hlsInstance.destroy();
+        hlsInstance = null;
+    }
+
+    const title = vodItem.title || "VOD";
+    const bannerTitle = streamInfo.is_drm ? `🎬 ${title} [Widevine DRM]` : `🎬 ${title}`;
+
+    if (replayBanner) {
+        replayBanner.classList.remove("hidden");
+        if (replayProgName) replayProgName.textContent = bannerTitle;
+    }
+
+    // Switch view to player
+    if (typeof switchTab === "function") {
+        switchTab("player");
+    }
+
+    // If clear HLS (no DRM), play using standard HLS engine
+    if (streamInfo.manifest_type === "hls" && !streamInfo.is_drm) {
+        loadHlsStream(streamInfo.url, true, bannerTitle);
+        return;
+    }
+
+    // Initialize Shaka Player for DASH / Widevine DRM
+    const shaka = await initShakaPlayerIfNeeded();
+    if (!shaka) {
+        console.warn("Shaka Player unavailable, attempting native browser playback...");
+        videoEl.src = streamInfo.url;
+        videoEl.play().catch(e => console.warn("Native video play failed:", e));
+        return;
+    }
+
+    try {
+        await shaka.unload();
+
+        if (streamInfo.is_drm && streamInfo.drm && streamInfo.drm.license_url) {
+            const drmProxyUrl = `/api/provider/oneplay/drm-license?target=${encodeURIComponent(streamInfo.drm.license_url)}&token=${encodeURIComponent(streamInfo.drm.token || '')}`;
+            shaka.configure({
+                drm: {
+                    servers: {
+                        'com.widevine.alpha': drmProxyUrl
+                    },
+                    advanced: {
+                        'com.widevine.alpha': {
+                            videoRobustness: 'SW_SECURE_CRYPTO',
+                            audioRobustness: 'SW_SECURE_CRYPTO'
+                        }
+                    }
+                }
+            });
+        }
+
+        await shaka.load(streamInfo.url);
+        if (loadingEl) loadingEl.classList.add("hidden");
+
+        videoEl.play().catch(err => {
+            console.log("Autoplay blocked, unmuting video...", err);
+            videoEl.muted = true;
+            videoEl.play().then(() => {
+                if (unmuteBtn) unmuteBtn.classList.remove("hidden");
+            });
+        });
+
+        if (typeof showToast === 'function') {
+            showToast(`Přehrávám: ${title}`, "success");
+        }
+    } catch (err) {
+        console.error("Failed to load stream in Shaka Player:", err);
+        if (loadingEl) loadingEl.classList.add("hidden");
+        if (typeof showToast === 'function') {
+            showToast(`Chyba při spuštění DRM přehrávání: ${err.message || err.code}`, "error");
+        }
+    }
+}
+
+window.playVodStream = playVodStream;

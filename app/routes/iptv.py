@@ -138,23 +138,15 @@ def get_playlist(
 def get_epg(
     request: Request,
     token: Optional[str] = None,
+    source: Optional[str] = Query(None, description="Filter source: all, sweettv, oneplay"),
     country: Optional[str] = Query(None, description="Language code override (e.g. 'cs', 'sk', 'hu')"),
-    refresh: bool = Query(False, description="Force fresh download from Sweet.tv"),
+    refresh: bool = Query(False, description="Force fresh download"),
     legacy_id: Optional[bool] = Query(False, description="Use legacy .id.com suffix for channel IDs")
 ):
-    """Returns XMLTV Electronic Program Guide formatted XML."""
+    """Returns XMLTV Electronic Program Guide formatted XML merging all active providers."""
     validate_token_or_session(request, token)
 
-    # Check if channel is an Oneplay channel
-    raw_cid = channel_id.replace(".m3u8", "").strip()
-    if raw_cid.startswith("oneplay:") or "~" in raw_cid or (not raw_cid.isdigit() and config.oneplay_enabled):
-        target_cid = raw_cid.replace("oneplay:", "")
-        return get_oneplay_stream(request, target_cid, token=token, utc=utc, start=start)
-
-    if not config.is_logged:
-        raise HTTPException(status_code=401, detail="Sweet.tv login required.")
-
-    xml_content = generate_xmltv_epg(country_code=country, force_refresh=refresh, legacy_id=bool(legacy_id))
+    xml_content = provider_manager.generate_xmltv_epg(source=source)
     return Response(
         content=xml_content,
         media_type="text/xml; charset=utf-8",
@@ -168,20 +160,15 @@ def get_epg(
 
 @router.get("/epg.xml.gz", response_class=Response)
 @router.get("/t/{token}/epg.xml.gz", response_class=Response)
-def get_epg_gz(request: Request, token: Optional[str] = None):
-    """Returns gzip-compressed XMLTV EPG for fast client downloads."""
+def get_epg_gz(
+    request: Request,
+    token: Optional[str] = None,
+    source: Optional[str] = Query(None, description="Filter source: all, sweettv, oneplay")
+):
+    """Returns gzip-compressed XMLTV EPG merging all active providers for fast client downloads."""
     validate_token_or_session(request, token)
 
-    # Check if channel is an Oneplay channel
-    raw_cid = channel_id.replace(".m3u8", "").strip()
-    if raw_cid.startswith("oneplay:") or "~" in raw_cid or (not raw_cid.isdigit() and config.oneplay_enabled):
-        target_cid = raw_cid.replace("oneplay:", "")
-        return get_oneplay_stream(request, target_cid, token=token, utc=utc, start=start)
-
-    if not config.is_logged:
-        raise HTTPException(status_code=401, detail="Sweet.tv login required.")
-
-    gz_content = get_xmltv_epg_gz()
+    gz_content = provider_manager.generate_xmltv_epg_gz(source=source)
     return Response(
         content=gz_content,
         media_type="application/gzip",

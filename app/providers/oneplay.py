@@ -168,6 +168,8 @@ class OneplayProvider(BaseProvider):
         self._channels_cache: Optional[List[Dict[str, Any]]] = None
         self._channels_cache_time: float = 0
         self._stream_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+        self._epg_cache: Dict[str, Dict[int, Dict[str, Any]]] = {}  # cid -> {startts: item}
+        self._epg_cache_time: float = 0
 
     def is_authenticated(self) -> bool:
         token = config.get("oneplay_token")
@@ -406,8 +408,34 @@ class OneplayProvider(BaseProvider):
         # Catchup seek handling
         now_ts = int(time.time())
         if utc_time and utc_time < (now_ts - 10):
-            # Query specific catchup payload or use timeshift begin
-            logger.info(f"Requesting Oneplay catchup for {clean_cid} at UTC {utc_time}")
+            logger.info(f"Resolving Oneplay catchup for {clean_cid} at UTC {utc_time}")
+            # Ensure EPG cache for base_cid is available
+            if base_cid not in self._epg_cache or not self._epg_cache[base_cid]:
+                self.get_channel_epg(base_cid)
+
+            channel_shows = self._epg_cache.get(base_cid, {})
+            target_show = None
+            if epg_id:
+                target_show = next((s for s in channel_shows.values() if str(s.get("referenceid")) == str(epg_id)), None)
+
+            if not target_show and channel_shows:
+                # Find show containing utc_time or closest preceding show
+                for s_ts, s_item in sorted(channel_shows.items()):
+                    if s_item["startts"] <= utc_time < s_item["endts"]:
+                        target_show = s_item
+                        break
+                if not target_show:
+                    # Pick closest within 4 hours
+                    closest = min(channel_shows.values(), key=lambda x: abs(x["startts"] - utc_time))
+                    if abs(closest["startts"] - utc_time) < (4 * 3600):
+                        target_show = closest
+
+            if target_show and target_show.get("payload"):
+                logger.info(f"Found catchup show: '{target_show.get('title')}' - requesting play payload via page.content.display")
+                disp_res = self.api.call_api("page.content.display", data={"payload": target_show["payload"]}, token=token)
+                disp_data = disp_res.get("data") or disp_res.get("result", {}).get("data") or {}
+                resolved_payload = disp_data.get("payload") or target_show["payload"]
+                post["payload"] = resolved_payload
 
         play_res = self.api.call_api("content.play", data=post, token=token)
         play_data = play_res.get("data") or play_res.get("result", {}).get("data") or {}
@@ -550,3 +578,442 @@ class OneplayProvider(BaseProvider):
         }
         res = self.api.call_api("epg.display", data=post, token=token)
         return res.get("data") or res.get("result", {}).get("data") or {}
+
+    def get_channel_epg(self, channel_id: str, days_back: int = 7, days_forward: int = 2) -> List[Dict[str, Any]]:
+        """
+        Fetches up to 7 days of past EPG (with catchup capability) and 2 days of future schedule.
+        Caches results per channel in memory.
+        """
+        clean_cid = channel_id.replace("oneplay:", "").strip()
+        base_cid = clean_cid.split("~")[0]
+        now_ts = int(time.time())
+
+        # Check if cache is fresh (< 30 mins) and contains base_cid
+        with self._lock:
+            if (now_ts - self._epg_cache_time < 1800) and base_cid in self._epg_cache and self._epg_cache[base_cid]:
+                items = list(self._epg_cache[base_cid].values())
+                items.sort(key=lambda x: x["startts"])
+                return [
+                    {
+                        "id": str(p.get("referenceid") or f"{clean_cid}_{p['startts']}"),
+                        "title": p.get("title", ""),
+                        "description": p.get("description", ""),
+                        "time_start": p["startts"],
+                        "time_stop": p["endts"],
+                        "duration": p["endts"] - p["startts"],
+                        "can_replay": p["endts"] <= (now_ts - 5) and p["startts"] >= (now_ts - (7 * 86400)),
+                        "cover": p.get("cover", ""),
+                        "payload": p.get("payload", {})
+                    }
+                    for p in items
+                ]
+
+        if not self.ensure_authenticated():
+            return []
+
+        token = config.get("oneplay_token")
+        from_ts = now_ts - (days_back * 86400)
+        to_ts = now_ts + (days_forward * 86400)
+
+        post = {
+            "payload": {
+                "criteria": {
+                    "channelSetId": "channel_list.1",
+                    "viewport": {
+                        "channelRange": {"from": 0, "to": 250},
+                        "timeRange": {
+                            "from": datetime.fromtimestamp(from_ts).strftime("%Y-%m-%dT%H:%M:%S") + ".000Z",
+                            "to": datetime.fromtimestamp(to_ts).strftime("%Y-%m-%dT%H:%M:%S") + ".000Z",
+                        },
+                        "schema": "EpgViewportAbsolute",
+                    },
+                },
+                "requestedOutput": {
+                    "channelList": "none",
+                    "datePicker": False,
+                    "channelSets": False,
+                },
+            }
+        }
+
+        logger.info(f"Fetching Oneplay EPG schedule ({days_back}d past, {days_forward}d ahead)...")
+        res = self.api.call_api("epg.display", data=post, token=token)
+        data = res.get("data") or res.get("result", {}).get("data") or {}
+        schedule = data.get("schedule") or []
+
+        with self._lock:
+            for ch in schedule:
+                cid = str(ch.get("channelId"))
+                if cid not in self._epg_cache:
+                    self._epg_cache[cid] = {}
+                for it in (ch.get("items") or []):
+                    try:
+                        s_iso = it.get("startAt", "")
+                        e_iso = it.get("endAt", "")
+                        if not s_iso or not e_iso:
+                            continue
+                        s_ts = int(datetime.fromisoformat(s_iso.replace("Z", "+00:00")).timestamp())
+                        e_ts = int(datetime.fromisoformat(e_iso.replace("Z", "+00:00")).timestamp())
+                        img_raw = it.get("image") or ""
+                        img = img_raw.replace("{WIDTH}", "480").replace("{HEIGHT}", "320") if img_raw else ""
+                        actions = it.get("actions") or [{}]
+                        params = actions[0].get("params") or {}
+                        payload = params.get("payload") or {}
+                        ref_id = it.get("referenceId") or f"{cid}_{s_ts}"
+
+                        self._epg_cache[cid][s_ts] = {
+                            "referenceid": ref_id,
+                            "title": it.get("title", ""),
+                            "description": it.get("description", ""),
+                            "startts": s_ts,
+                            "endts": e_ts,
+                            "cover": img,
+                            "payload": payload,
+                            "contentType": params.get("contentType")
+                        }
+                    except Exception:
+                        continue
+
+            self._epg_cache_time = now_ts
+
+        channel_items = list(self._epg_cache.get(base_cid, {}).values())
+        channel_items.sort(key=lambda x: x["startts"])
+        return [
+            {
+                "id": str(p.get("referenceid") or f"{clean_cid}_{p['startts']}"),
+                "title": p.get("title", ""),
+                "description": p.get("description", ""),
+                "time_start": p["startts"],
+                "time_stop": p["endts"],
+                "duration": p["endts"] - p["startts"],
+                "can_replay": p["endts"] <= (now_ts - 5) and p["startts"] >= (now_ts - (7 * 86400)),
+                "cover": p.get("cover", ""),
+                "payload": p.get("payload", {})
+            }
+            for p in channel_items
+        ]
+
+    def _parse_tiles(self, tiles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Standardizes VOD tile objects from Jyxo CMS into app VOD format."""
+        parsed = []
+        for tile in tiles:
+            params = tile.get("action", {}).get("params") or {}
+            if tile.get("tracking", {}).get("upsell") or params.get("action", {}).get("call") == "user.upsell.preview":
+                continue
+
+            content_type = params.get("contentType") or tile.get("tracking", {}).get("type") or "movie"
+            payload = params.get("payload") or {}
+            content_id = payload.get("contentId") or payload.get("criteria", {}).get("contentId") or tile.get("id") or str(tile.get("referenceId", ""))
+            if not content_id and payload.get("deeplink"):
+                content_id = str(payload.get("deeplink", {}).get("epgItem") or "")
+
+            img_raw = tile.get("image") or ""
+            if isinstance(img_raw, dict):
+                img_raw = img_raw.get("src") or img_raw.get("url") or ""
+            poster = str(img_raw).replace("{WIDTH}", "400").replace("{HEIGHT}", "600") if img_raw else ""
+
+            tracking = tile.get("tracking") or {}
+            year = tracking.get("year") or tile.get("year") or ""
+            duration = tracking.get("duration") or tile.get("duration") or 0
+
+            parsed.append({
+                "id": str(content_id or os.urandom(6).hex()),
+                "title": tile.get("title") or "Bez názvu",
+                "content_type": content_type,
+                "image": poster,
+                "description": tile.get("description") or tile.get("subTitle") or "",
+                "year": str(year) if year else "",
+                "duration": duration,
+                "is_drm": True,
+                "payload": payload,
+            })
+        return parsed
+
+    def get_vod_categories(self) -> List[Dict[str, Any]]:
+        """Returns top-level VOD categories."""
+        default_cats = [
+            {"id": "all", "title": "⭐ Vše", "categoryId": "1"},
+            {"id": "movies", "title": "🎬 Filmy", "categoryId": "1"},
+            {"id": "series", "title": "📺 Seriály", "categoryId": "2"},
+            {"id": "recordings", "title": "📼 Nahrávky (Cloud DVR)", "categoryId": "8"},
+        ]
+        if not self.ensure_authenticated():
+            return default_cats
+
+        token = config.get("oneplay_token")
+        try:
+            init_res = self.api.call_api("app.init", data={"payload": {"reason": "start"}}, token=token)
+            init_data = init_res.get("data") or init_res.get("result", {}).get("data") or {}
+            cats = [{"id": "all", "title": "⭐ Vše", "categoryId": "1"}]
+            for group in (init_data.get("menu", {}).get("groups") or []):
+                if group.get("position") == "top":
+                    for item in (group.get("items") or []):
+                        action = item.get("action", {})
+                        if action.get("call") == "page.category.display":
+                            p = action.get("params", {}).get("payload") or {}
+                            cat_id = p.get("categoryId") or item.get("id")
+                            cats.append({
+                                "id": str(cat_id),
+                                "title": item.get("title", f"Kategorie {cat_id}"),
+                                "categoryId": str(cat_id),
+                            })
+            if len(cats) > 1:
+                if not any(c.get("categoryId") == "8" or c["id"] == "recordings" for c in cats):
+                    cats.append({"id": "8", "title": "📼 Nahrávky (Cloud DVR)", "categoryId": "8"})
+                return cats
+        except Exception as e:
+            logger.warning(f"Error fetching Oneplay categories via app.init: {e}")
+
+        return default_cats
+
+    def get_vod_items(
+        self,
+        category: str = "all",
+        page: int = 1,
+        query: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Fetches catalog items for a category or search query with pagination."""
+        if not self.ensure_authenticated():
+            return {"items": [], "page": page, "has_more": False}
+
+        token = config.get("oneplay_token")
+        items: List[Dict[str, Any]] = []
+        has_more = False
+
+        try:
+            if query:
+                res = self.api.call_api("page.search.display", data={"payload": {"query": query}}, token=token)
+                data = res.get("data") or res.get("result", {}).get("data") or {}
+                layout = data.get("layout") or {}
+                blocks = layout.get("blocks") or []
+                for b in blocks:
+                    if b.get("schema") == "TabBlock":
+                        for lb in (b.get("layout", {}).get("blocks") or []):
+                            for c in (lb.get("carousels") or []):
+                                items.extend(self._parse_tiles(c.get("tiles") or []))
+                    elif b.get("schema") == "CarouselBlock":
+                        for c in (b.get("carousels") or []):
+                            items.extend(self._parse_tiles(c.get("tiles") or []))
+            else:
+                cat_id = "1" if category == "movies" else ("2" if category == "series" else ("8" if category == "recordings" else category))
+                if cat_id in ("all", ""):
+                    cat_id = "1"
+
+                res = self.api.call_api("page.category.display", data={"payload": {"categoryId": str(cat_id)}}, token=token)
+                data = res.get("data") or res.get("result", {}).get("data") or []
+                blocks = data if isinstance(data, list) else (data.get("layout", {}).get("blocks") or [])
+
+                for b in blocks:
+                    if b.get("schema") == "CarouselBlock":
+                        carousels = b.get("carousels") or []
+                        for c in carousels:
+                            paging = c.get("paging") or {}
+                            if page > 1 and paging.get("criteria"):
+                                c_post = {
+                                    "payload": {
+                                        "criteria": paging.get("criteria"),
+                                        "carouselId": c.get("id"),
+                                        "paging": {"count": 24, "position": (page - 1) * 24 + 1}
+                                    }
+                                }
+                                c_res = self.api.call_api("carousel.display", data=c_post, token=token)
+                                c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
+                                items.extend(self._parse_tiles(c_data.get("tiles") or []))
+                                has_more = bool(c_data.get("paging", {}).get("next"))
+                                break
+                            else:
+                                items.extend(self._parse_tiles(c.get("tiles") or []))
+                                has_more = bool(paging.get("next"))
+                    elif b.get("schema") == "TabBlock":
+                        for lb in (b.get("layout", {}).get("blocks") or []):
+                            for c in (lb.get("carousels") or []):
+                                items.extend(self._parse_tiles(c.get("tiles") or []))
+
+        except Exception as e:
+            logger.error(f"Error fetching Oneplay VOD items: {e}")
+
+        # Deduplicate
+        unique_items = []
+        seen = set()
+        for item in items:
+            iid = item.get("id")
+            if iid and iid not in seen:
+                seen.add(iid)
+                unique_items.append(item)
+
+        return {
+            "items": unique_items,
+            "page": page,
+            "has_more": has_more or len(unique_items) >= 24
+        }
+
+    def get_series_detail(self, series_payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Fetches seasons and episodes for a TV series."""
+        if not self.ensure_authenticated():
+            return {}
+        token = config.get("oneplay_token")
+        try:
+            res = self.api.call_api("page.content.display", data={"payload": series_payload}, token=token)
+            data = res.get("data") or res.get("result", {}).get("data") or {}
+            seasons = []
+            for s in (data.get("seasons") or []):
+                seasons.append({
+                    "label": s.get("label", "1. série"),
+                    "carouselId": s.get("carouselId"),
+                    "criteria": s.get("criteria"),
+                })
+            episodes = []
+            if not seasons and data.get("episodes"):
+                for ep in data.get("episodes"):
+                    ep_params = ep.get("action", {}).get("params") or {}
+                    episodes.append({
+                        "id": str(ep_params.get("payload", {}).get("contentId") or ep.get("id")),
+                        "title": ep.get("title", ""),
+                        "description": ep.get("description", ""),
+                        "duration": ep.get("duration", 0),
+                        "image": (ep.get("image") or "").replace("{WIDTH}", "400").replace("{HEIGHT}", "225"),
+                        "payload": ep_params.get("payload", {}),
+                    })
+
+            img_raw = data.get("image") or data.get("backdrop") or ""
+            poster = str(img_raw).replace("{WIDTH}", "800").replace("{HEIGHT}", "450") if img_raw else ""
+
+            return {
+                "title": data.get("title", ""),
+                "description": data.get("description", ""),
+                "image": poster,
+                "seasons": seasons,
+                "episodes": episodes,
+            }
+        except Exception as e:
+            logger.error(f"Error fetching series detail: {e}")
+            return {}
+
+    def get_season_episodes(self, carousel_id: str, criteria: Any, sort_order: str = "ASC") -> List[Dict[str, Any]]:
+        """Fetches episodes of a given series season."""
+        if not self.ensure_authenticated():
+            return []
+        token = config.get("oneplay_token")
+        try:
+            c_post = {
+                "payload": {
+                    "carouselId": carousel_id,
+                    "criteria": {"filterCriterias": criteria, "sortOption": sort_order},
+                    "paging": {"count": 100, "position": 1}
+                }
+            }
+            res = self.api.call_api("carousel.display", data=c_post, token=token)
+            data = res.get("data") or res.get("result", {}).get("data") or {}
+            episodes = []
+            for tile in (data.get("tiles") or []):
+                params = tile.get("action", {}).get("params") or {}
+                payload = params.get("payload") or {}
+                img_raw = tile.get("image") or ""
+                poster = str(img_raw).replace("{WIDTH}", "400").replace("{HEIGHT}", "225") if img_raw else ""
+                episodes.append({
+                    "id": str(payload.get("contentId") or tile.get("id")),
+                    "title": tile.get("title", ""),
+                    "description": tile.get("description", ""),
+                    "duration": tile.get("duration", 0),
+                    "image": poster,
+                    "payload": payload,
+                    "is_drm": True,
+                })
+            return episodes
+        except Exception as e:
+            logger.error(f"Error fetching season episodes: {e}")
+            return []
+
+    def get_recordings(self) -> List[Dict[str, Any]]:
+        """Fetches Cloud DVR recordings for current user."""
+        res = self.get_vod_items(category="8", page=1)
+        return res.get("items", [])
+
+    def get_vod_stream(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Calls content.play to retrieve stream URLs and DRM parameters for a VOD title.
+        Supports clear HLS and Widevine DRM DASH.
+        """
+        if not self.ensure_authenticated():
+            return None
+        token = config.get("oneplay_token")
+        try:
+            post = {
+                "payload": payload,
+                "playbackCapabilities": {
+                    "protocols": ["dash", "hls"],
+                    "drm": ["widevine", "fairplay"],
+                    "altTransfer": "Unicast",
+                    "subtitle": {
+                        "formats": ["vtt"],
+                        "locations": ["InstreamTrackLocation", "ExternalTrackLocation"]
+                    },
+                    "liveSpecificCapabilities": {
+                        "protocols": ["dash", "hls"],
+                        "drm": ["widevine", "fairplay"],
+                        "altTransfer": "Unicast",
+                        "multipleAudio": False
+                    }
+                }
+            }
+            pin = config.get("oneplay_pin", "4321")
+            if pin and pin != "4321":
+                post["authorization"] = [{"schema": "PinRequestAuthorization", "pin": str(pin), "type": "parental"}]
+
+            res = self.api.call_api("content.play", data=post, token=token)
+            data = res.get("data") or res.get("result", {}).get("data") or {}
+            assets = data.get("media", {}).get("stream", {}).get("assets") or []
+
+            # 1. Clear HLS
+            for asset in assets:
+                if asset.get("protocol") == "hls" and "drm" not in asset:
+                    return {
+                        "manifest_type": "hls",
+                        "url": asset.get("src"),
+                        "is_drm": False,
+                        "drm": None,
+                    }
+
+            # 2. Widevine DRM DASH
+            for asset in assets:
+                if asset.get("protocol") == "dash" and "drm" in asset:
+                    drm_info = asset.get("drm") or [{}]
+                    lic_url = drm_info[0].get("licenseAcquisitionURL")
+                    ax_token = drm_info[0].get("drmAuthorization", {}).get("value") or ""
+                    return {
+                        "manifest_type": "mpd",
+                        "url": asset.get("src"),
+                        "is_drm": True,
+                        "drm": {
+                            "type": "widevine",
+                            "license_url": lic_url,
+                            "token": ax_token,
+                        }
+                    }
+
+            # 3. Any DASH
+            for asset in assets:
+                if asset.get("protocol") == "dash":
+                    return {
+                        "manifest_type": "mpd",
+                        "url": asset.get("src"),
+                        "is_drm": False,
+                        "drm": None,
+                    }
+
+            # 4. Fallback HLS
+            for asset in assets:
+                if asset.get("protocol") == "hls":
+                    return {
+                        "manifest_type": "hls",
+                        "url": asset.get("src"),
+                        "is_drm": False,
+                        "drm": None,
+                    }
+
+        except Exception as e:
+            logger.error(f"Error fetching Oneplay VOD stream: {e}")
+
+        return None
+
+
