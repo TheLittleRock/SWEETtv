@@ -20,6 +20,7 @@ from app.auth import (
 from app.config import config
 from app.epg import get_cached_channels
 from app.routes.iptv import clean_id, get_effective_base_url
+from app.stream import resolve_epg_id_from_utc, safe_parse_timestamp
 from app.version import APP_NAME, APP_VERSION
 
 logger = logging.getLogger("SweetTV.Routes.Stalker")
@@ -50,6 +51,80 @@ def _get_stb_session(stb_token: str) -> Optional[Dict[str, Any]]:
             return sess
         _stb_sessions.pop(stb_token, None)
     return None
+
+
+def _build_epg_items(
+    params: Dict[str, Any],
+    limit_window: bool = False,
+    date_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Constructs normalized Stalker/Ministra EPG program items from cached channels.
+    If limit_window is True (for get_short_epg), limits programs around now (-24h to +48h).
+    If date_filter is provided (YYYY-MM-DD), limits programs to that date.
+    """
+    ch_id_raw = params.get("ch_id") or params.get("stream_id") or params.get("id")
+    cid = None
+    if ch_id_raw:
+        try:
+            cid = clean_id(str(ch_id_raw))
+        except Exception:
+            pass
+
+    data = get_cached_channels(need_epg=True) or {}
+    now = int(time.time())
+    items = []
+
+    target_channels = [c for c in data.get("list", []) if (cid is None or c.get("id") == cid)]
+    for ch in target_channels:
+        c_id = ch.get("id")
+        is_catchup = 1 if ch.get("catchup") else 0
+        catchup_days = int(ch.get("catchup_duration", 7) or 7) if is_catchup else 0
+        catchup_duration_sec = catchup_days * 86400
+
+        for p in ch.get("epg", []):
+            t_start = p.get("time_start", 0)
+            t_stop = p.get("time_stop", 0)
+            if not t_start or not t_stop:
+                continue
+
+            if limit_window:
+                if t_stop < now - 86400:
+                    continue
+                if t_start > now + 172800:
+                    continue
+
+            start_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start))
+            stop_dt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop))
+
+            if date_filter and not (start_dt.startswith(date_filter) or stop_dt.startswith(date_filter)):
+                continue
+
+            prog_id = str(p.get("id") or f"{c_id}_{t_start}")
+            is_archive = 1 if (is_catchup and t_start <= now and (now - t_start) <= catchup_duration_sec) else 0
+            is_playing = 1 if (t_start <= now < t_stop) else 0
+
+            items.append({
+                "id": prog_id,
+                "epg_id": prog_id,
+                "ch_id": str(c_id),
+                "name": p.get("text", ""),
+                "descr": p.get("description") or p.get("genre") or "",
+                "time": time.strftime("%H:%M", time.localtime(t_start)),
+                "time_to": time.strftime("%H:%M", time.localtime(t_stop)),
+                "duration": max(0, t_stop - t_start),
+                "t_start": t_start,
+                "t_stop": t_stop,
+                "start_timestamp": t_start,
+                "stop_timestamp": t_stop,
+                "start": start_dt,
+                "end": stop_dt,
+                "cur_playing": is_playing,
+                "mark_archive": is_archive,
+            })
+
+    items.sort(key=lambda x: x["t_start"])
+    return items
 
 
 def _extract_mac(request: Request, params: Dict[str, Any]) -> Optional[str]:
@@ -257,18 +332,14 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 }
             })
 
-        elif action == "get_epg_info":
-            # Overview of EPG table
+        elif action in ("get_epg_info", "get_short_epg"):
+            items = _build_epg_items(params, limit_window=(action == "get_short_epg"))
+            if action == "get_short_epg":
+                return JSONResponse({"js": items})
             return JSONResponse({
                 "js": {
-                    "data": [],
-                    "total_items": 0
-                }
-            })
-            return JSONResponse({
-                "js": {
-                    "data": [],
-                    "total_items": 0
+                    "data": items,
+                    "total_items": len(items)
                 }
             })
 
@@ -335,9 +406,11 @@ async def stalker_load(request: Request, token: Optional[str] = None):
 
                 is_catchup = 1 if ch.get("catchup") else 0
                 catchup_days = int(ch.get("catchup_duration", 7) or 7) if is_catchup else 0
+                catchup_hours = catchup_days * 24 if is_catchup else 0
 
                 stb_channels.append({
                     "id": str(cid),
+                    "ch_id": str(cid),
                     "name": cname,
                     "number": str(idx),
                     "censored": 0,
@@ -347,11 +420,21 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "status": 1,
                     "archive": is_catchup,
                     "tv_archive": is_catchup,
-                    "tv_archive_duration": catchup_days,
+                    "have_archive": is_catchup,
+                    "allow_pvr": is_catchup,
+                    "allow_record": is_catchup,
+                    "tv_archive_duration": catchup_hours,
+                    "archive_duration": catchup_hours,
                     "tv_genre_id": str(cat_id),
                     "genre_id": str(cat_id),
+                    "tvg_id": str(cid),
+                    "tvg-id": str(cid),
+                    "tvg_name": cname,
+                    "tvg-name": cname,
                     "xmltv_id": str(cid),
+                    "epg_id": str(cid),
                     "logo": icon,
+                    "tvg_logo": icon,
                     "cmd": f"ffmpeg {stream_url}"
                 })
 
@@ -367,35 +450,76 @@ async def stalker_load(request: Request, token: Optional[str] = None):
 
         elif action == "create_link":
             raw_cmd = unquote(str(params.get("cmd", ""))).strip()
-            # Clean possible 'ffmpeg ' prefix
             if raw_cmd.lower().startswith("ffmpeg "):
                 raw_cmd = raw_cmd[7:].strip()
 
             cid = None
             epg_id = None
-            # If cmd is a direct URL or contains channel ID
-            if "/stream/" in raw_cmd or "/play/" in raw_cmd:
-                try:
-                    seg = raw_cmd.split("/stream/")[-1].split("/play/")[-1]
-                    parts = seg.split("?")[0].split("/")
-                    if len(parts) >= 2:
-                        cid = clean_id(parts[0])
-                        epg_id = parts[1].replace(".m3u8", "").strip()
-                    else:
-                        cid = clean_id(parts[0])
-                except Exception:
-                    pass
-            elif raw_cmd.isdigit():
-                cid = int(raw_cmd)
+
+            # 1. Check explicit channel ID parameters
+            for param_key in ("ch_id", "channel_id", "stream_id"):
+                if params.get(param_key):
+                    try:
+                        cid = clean_id(str(params[param_key]))
+                        break
+                    except Exception:
+                        pass
+
+            # 2. Check explicit program / archive parameters
+            for prog_key in ("archive_id", "program_id", "epg_id"):
+                val = params.get(prog_key)
+                if val and str(val).strip() and str(val).strip() not in ("0", "null", "undefined"):
+                    epg_id = str(val).strip()
+                    break
+
+            # 3. Parse command path
+            if raw_cmd:
+                if "/archive/" in raw_cmd:
+                    arch_match = re.search(r"/archive/(\d+)(?:/(\d+))?", raw_cmd)
+                    if arch_match:
+                        if not cid:
+                            cid = int(arch_match.group(1))
+                        if arch_match.group(2) and not epg_id:
+                            epg_id = arch_match.group(2)
+                elif "/stream/" in raw_cmd or "/play/" in raw_cmd:
+                    try:
+                        seg = raw_cmd.split("/stream/")[-1].split("/play/")[-1]
+                        parts = seg.split("?")[0].split("/")
+                        if len(parts) >= 2:
+                            if not cid:
+                                cid = clean_id(parts[0])
+                            if not epg_id:
+                                epg_id = parts[1].replace(".m3u8", "").strip()
+                        else:
+                            if not cid:
+                                cid = clean_id(parts[0])
+                    except Exception:
+                        pass
+                elif raw_cmd.isdigit() and not cid:
+                    cid = int(raw_cmd)
 
             if not cid:
-                # Default to first channel
                 cid = 851
+
+            # 4. Parse timestamp/utc for catchup timeshift if epg_id not resolved yet
+            utc_candidate = params.get("timestamp") or params.get("utc") or params.get("start") or params.get("time")
+            utc_ts = None
+            if utc_candidate:
+                utc_ts = safe_parse_timestamp(utc_candidate)
+
+            if not epg_id and utc_ts:
+                resolved = resolve_epg_id_from_utc(cid, utc_ts)
+                if resolved:
+                    epg_id = str(resolved)
 
             quality = config.default_quality
             q_param = f"?quality={quality}" if quality and quality != "auto" else ""
+
             if epg_id:
                 final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}/{epg_id}.m3u8{q_param}"
+            elif utc_ts:
+                sep = "&" if q_param else "?"
+                final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{q_param}{sep}utc={utc_ts}"
             else:
                 final_stream_url = f"{base_url}/t/{user.token}/stream/{cid}.m3u8{q_param}"
 
@@ -409,60 +533,64 @@ async def stalker_load(request: Request, token: Optional[str] = None):
             })
 
         elif action == "get_short_epg":
-            ch_id_raw = params.get("ch_id")
-            if not ch_id_raw:
-                return JSONResponse({"js": {"data": [], "total_items": 0}})
+            items = _build_epg_items(params, limit_window=True)
+            return JSONResponse({"js": items})
 
-            try:
-                cid = clean_id(str(ch_id_raw))
-            except ValueError:
-                return JSONResponse({"js": {"data": [], "total_items": 0}})
-
-            data = get_cached_channels(need_epg=True) or {}
-            ch = next((c for c in data.get("list", []) if c.get("id") == cid), None)
-
-            now = int(time.time())
-            items = []
-            if ch and ch.get("epg"):
-                for p in ch["epg"]:
-                    t_start = p.get("time_start", 0)
-                    t_stop = p.get("time_stop", 0)
-                    if t_stop < now - 3600:
-                        continue
-                    if t_start > now + 43200:
-                        continue
-
-                    items.append({
-                        "id": str(p.get("id") or idx),
-                        "time": time.strftime("%H:%M", time.localtime(t_start)),
-                        "time_to": time.strftime("%H:%M", time.localtime(t_stop)),
-                        "timestamp": t_start,
-                        "timestamp_to": t_stop,
-                        "name": p.get("text", ""),
-                        "descr": p.get("description") or p.get("genre") or "",
-                        "duration": max(0, t_stop - t_start),
-                        "cur_playing": 1 if t_start <= now < t_stop else 0
-                    })
-                    if len(items) >= 6:
-                        break
-
+        elif action == "get_epg_info":
+            items = _build_epg_items(params, limit_window=False)
             return JSONResponse({
                 "js": {
-                    "data": items,
-                    "total_items": len(items)
+                    "total_items": len(items),
+                    "data": items
+                }
+            })
+
+        elif action == "get_simple_data_table":
+            date_filter = str(params.get("date", "")).strip() or None
+            items = _build_epg_items(params, limit_window=False, date_filter=date_filter)
+            page = int(params.get("p", 1) or 1)
+            max_page_items = int(params.get("max_page_items", 100) or 100)
+            total_items = len(items)
+            start_idx = max(0, (page - 1) * max_page_items)
+            paged_data = items[start_idx : start_idx + max_page_items]
+            return JSONResponse({
+                "js": {
+                    "total_items": total_items,
+                    "max_page_items": max_page_items,
+                    "selected_item": 0,
+                    "cur_page": page,
+                    "data": paged_data
                 }
             })
 
     # 4. Electronic Program Guide (EPG) Table
     elif req_type == "epg":
         if action == "get_simple_data_table":
+            date_filter = str(params.get("date", "")).strip() or None
+            items = _build_epg_items(params, limit_window=False, date_filter=date_filter)
+            page = int(params.get("p", 1) or 1)
+            max_page_items = int(params.get("max_page_items", 100) or 100)
+            total_items = len(items)
+            start_idx = max(0, (page - 1) * max_page_items)
+            paged_data = items[start_idx : start_idx + max_page_items]
             return JSONResponse({
                 "js": {
-                    "total_items": 0,
-                    "max_page_items": 0,
+                    "total_items": total_items,
+                    "max_page_items": max_page_items,
                     "selected_item": 0,
-                    "cur_page": 0,
-                    "data": []
+                    "cur_page": page,
+                    "data": paged_data
+                }
+            })
+        elif action == "get_short_epg":
+            items = _build_epg_items(params, limit_window=True)
+            return JSONResponse({"js": items})
+        elif action == "get_epg_info":
+            items = _build_epg_items(params, limit_window=False)
+            return JSONResponse({
+                "js": {
+                    "total_items": len(items),
+                    "data": items
                 }
             })
 
@@ -492,6 +620,7 @@ def stalker_portal_page(request: Request, token: Optional[str] = None):
 
     portal_url = f"{base_url}/c/"
     token_url = f"{base_url}/t/{portal_token}/c/" if portal_token else f"{base_url}/t/&lt;váš-token&gt;/c/"
+    epg_url = f"{base_url}/t/{portal_token}/epg.xml.gz" if portal_token else f"{base_url}/epg.xml.gz"
     mac_display = user_mac or "Není nastavena"
 
     return HTMLResponse(content=f"""
@@ -573,7 +702,12 @@ def stalker_portal_page(request: Request, token: Optional[str] = None):
             <span class="label">Registrovaná MAC adresa vašeho účtu:</span>
             <div class="mac-box">{mac_display}</div>
 
-            <p style="font-size: 12px; color: #64748b;">Aplikace a zařízení se ověřují přes MAC adresu. Svou MAC adresu můžete změnit ve webové administraci.</p>
+            <span class="label">EPG URL (XMLTV Program pro IPTVnator):</span>
+            <div class="url-box">{epg_url}</div>
+
+            <p style="font-size: 12px; color: #64748b;">
+                V aplikaci IPTVnator přidejte tuto EPG URL v Nastavení (ozubené kolečko) &rarr; EPG pro automatické spárování televizního programu a archivu pro zpětné přehrávání.
+            </p>
             <div style="margin-top: 20px;">
                 <a href="/">← Zpět na webový přehrávač a správu</a>
             </div>
