@@ -45,6 +45,8 @@ async def player_api(
     action: Optional[str] = Query(None),
     stream_id: Optional[str] = Query(None),
     category_id: Optional[str] = Query(None),
+    vod_id: Optional[str] = Query(None),
+    series_id: Optional[str] = Query(None),
     limit: Optional[int] = Query(None)
 ):
     """
@@ -60,6 +62,8 @@ async def player_api(
             action = action or form.get("action")
             stream_id = stream_id or form.get("stream_id")
             category_id = category_id or form.get("category_id")
+            vod_id = vod_id or form.get("vod_id")
+            series_id = series_id or form.get("series_id")
             if form.get("limit") and not limit:
                 limit = int(form.get("limit"))
         except Exception:
@@ -287,9 +291,27 @@ async def player_api(
 
     # 7. VOD Info
     if action == "get_vod_info":
-        vid = int(vod_id or 0)
+        eff_id = vod_id or stream_id
+        try:
+            vid = int(clean_id(str(eff_id))) if eff_id else 0
+        except Exception:
+            vid = 0
+
         item = _vod_cache_by_id.get(vid)
-        name = item.get("title", "Film") if item else "Film"
+        if not item and config.oneplay_enabled and config.is_oneplay_logged:
+            res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+            idx = 0
+            for it in (res_m.get("items") or []):
+                idx += 1
+                _vod_cache_by_id[30000 + idx] = it
+            res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
+            idx = 0
+            for it in (res_r.get("items") or []):
+                idx += 1
+                _vod_cache_by_id[31000 + idx] = it
+            item = _vod_cache_by_id.get(vid)
+
+        name = item.get("title", f"Film {vid}") if item else f"Film {vid}"
         poster = item.get("image", "") if item else ""
         desc = item.get("description", "") if item else ""
         return JSONResponse(content={
@@ -351,8 +373,21 @@ async def player_api(
 
     # 10. Series Info (Seasons & Episodes)
     if action == "get_series_info":
-        sid = int(series_id or 0)
+        eff_sid = series_id or stream_id
+        try:
+            sid = int(clean_id(str(eff_sid))) if eff_sid else 0
+        except Exception:
+            sid = 0
+
         s_item = _series_cache_by_id.get(sid)
+        if (not s_item or not s_item.get("payload")) and config.oneplay_enabled and config.is_oneplay_logged:
+            res = provider_manager.oneplay.get_vod_items(category="series", page=1)
+            idx = 0
+            for it in (res.get("items") or []):
+                idx += 1
+                _series_cache_by_id[40000 + idx] = it
+            s_item = _series_cache_by_id.get(sid)
+
         if not s_item or not s_item.get("payload"):
             return JSONResponse(content={"seasons": [], "info": {}, "episodes": {}})
 
@@ -462,7 +497,9 @@ def xtream_live_stream(
         # Find Oneplay channel matching stream_id
         op_channels = provider_manager.oneplay.get_channels()
         target_ch = next((c for c in op_channels if (10000 + int(c.get("channel_number", 0))) == sid_int), None)
-        target_cid = target_ch["id"] if target_ch else str(sid_int)
+        if not target_ch:
+            target_ch = next((c for c in op_channels if str(c.get("id")) == str(sid_int) or str(c.get("channel_number")) == str(sid_int)), None)
+        target_cid = target_ch["id"] if target_ch else str(sid_int - 10000 if sid_int > 10000 else sid_int)
 
         stream_info = provider_manager.oneplay.get_stream_details(target_cid)
         if not stream_info or not stream_info.get("master_url"):
@@ -536,7 +573,9 @@ def xtream_timeshift_stream(
             raise HTTPException(status_code=401, detail="Oneplay is not logged in.")
         op_channels = provider_manager.oneplay.get_channels()
         target_ch = next((c for c in op_channels if (10000 + int(c.get("channel_number", 0))) == sid_int), None)
-        target_cid = target_ch["id"] if target_ch else str(sid_int)
+        if not target_ch:
+            target_ch = next((c for c in op_channels if str(c.get("id")) == str(sid_int) or str(c.get("channel_number")) == str(sid_int)), None)
+        target_cid = target_ch["id"] if target_ch else str(sid_int - 10000 if sid_int > 10000 else sid_int)
 
         stream_info = provider_manager.oneplay.get_stream_details(target_cid, utc_time=target_ts)
         if not stream_info or not stream_info.get("master_url"):
@@ -600,6 +639,21 @@ def xtream_movie_stream(
         raise HTTPException(status_code=400, detail="Invalid stream ID.")
 
     item = _vod_cache_by_id.get(sid_int)
+    if not item or not item.get("payload"):
+        # Auto-reload VOD cache if expired or missing
+        if config.oneplay_enabled and config.is_oneplay_logged:
+            res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+            idx = 0
+            for it in (res_m.get("items") or []):
+                idx += 1
+                _vod_cache_by_id[30000 + idx] = it
+            res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
+            idx = 0
+            for it in (res_r.get("items") or []):
+                idx += 1
+                _vod_cache_by_id[31000 + idx] = it
+        item = _vod_cache_by_id.get(sid_int)
+
     if not item or not item.get("payload"):
         raise HTTPException(status_code=404, detail="VOD item not found or expired.")
 

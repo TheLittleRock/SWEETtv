@@ -695,7 +695,7 @@ def get_stream_info_api(
     clean_str = str(channel_id).replace(".m3u8", "").strip()
     if clean_str.startswith("oneplay:") or "~" in clean_str or (not clean_str.isdigit() and config.oneplay_enabled):
         cid_op = clean_str.replace("oneplay:", "")
-        details = provider_manager.oneplay.get_stream_details(cid_op)
+        details = provider_manager.oneplay.get_stream_details(cid_op, epg_id=epg_id)
         if not details or not details.get("master_url"):
             raise HTTPException(status_code=502, detail="Failed to retrieve stream from Oneplay.")
         return {
@@ -842,7 +842,7 @@ def get_oneplay_vod_play_stream_api(
     return stream_info
 
 
-@router.post("/provider/oneplay/drm-license")
+@router.api_route("/provider/oneplay/drm-license", methods=["POST", "OPTIONS"])
 async def oneplay_drm_license_proxy(
     request: Request,
     target: Optional[str] = Query(None, description="Target Axinom License Acquisition URL"),
@@ -852,6 +852,17 @@ async def oneplay_drm_license_proxy(
     Proxies raw binary Widevine CDM challenge from Shaka Player to Axinom license server.
     Appends required 'X-AxDRM-Message' token and forwards binary Widevine license.
     """
+    if request.method == "OPTIONS":
+        return Response(
+            content="",
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+            }
+        )
+
     license_url = target or request.headers.get("X-Target-License-Url")
     drm_token = token or request.headers.get("X-AxDRM-Message")
 

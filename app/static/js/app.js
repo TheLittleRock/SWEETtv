@@ -1104,7 +1104,7 @@ function renderVodGrid(items) {
     if (!gridEl) return;
 
     gridEl.innerHTML = items.map((item, idx) => {
-        const isSeries = item.content_type === "show";
+        const isSeries = item.content_type === "show" || item.content_type === "series" || activeVodCategory === "series";
         const isRecording = item.content_type === "recording" || activeVodCategory === "recordings";
         const posterUrl = item.image || "https://staticeu.sweet.tv/images/v2/icons/categories/1000.png";
         const typeBadge = isSeries ? "Seriál" : (isRecording ? "Nahrávka" : "Film");
@@ -1142,7 +1142,7 @@ function handleVodClick(itemIdx) {
     const item = currentVodItems[itemIdx];
     if (!item) return;
 
-    if (item.content_type === "show") {
+    if (item.content_type === "show" || item.content_type === "series" || activeVodCategory === "series") {
         openSeriesModal(item);
     } else {
         playVodItem(item);

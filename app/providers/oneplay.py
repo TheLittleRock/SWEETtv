@@ -293,6 +293,20 @@ class OneplayProvider(BaseProvider):
         except Exception as e:
             logger.warning(f"Error managing Oneplay devices: {e}")
 
+    def _extract_image_url(self, img_obj: Any, width: int = 320, height: int = 480) -> str:
+        """Robustly extracts and formats image URL from Jyxo CMS image objects or strings."""
+        if not img_obj:
+            return ""
+        if isinstance(img_obj, dict):
+            url = img_obj.get("image") or img_obj.get("src") or img_obj.get("url") or img_obj.get("poster") or ""
+        elif isinstance(img_obj, str):
+            url = img_obj
+        else:
+            url = ""
+        if url and "{WIDTH}" in url:
+            return url.replace("{WIDTH}", str(width)).replace("{HEIGHT}", str(height))
+        return url
+
     def get_channels(self, force_refresh: bool = False, need_epg: bool = False) -> List[Dict[str, Any]]:
         now = time.time()
         with self._lock:
@@ -323,8 +337,7 @@ class OneplayProvider(BaseProvider):
             except (ValueError, TypeError):
                 order_num = base_order + len(channels) + 1
 
-            logo_raw = ch.get("logo") or ""
-            icon = logo_raw.replace("{WIDTH}", "390").replace("{HEIGHT}", "228") if logo_raw else ""
+            icon = self._extract_image_url(ch.get("logo"), 390, 228)
 
             ch_dict = {
                 "id": cid,
@@ -431,14 +444,23 @@ class OneplayProvider(BaseProvider):
                         target_show = closest
 
             if target_show and target_show.get("payload"):
-                logger.info(f"Found catchup show: '{target_show.get('title')}' - requesting play payload via page.content.display")
-                disp_res = self.api.call_api("page.content.display", data={"payload": target_show["payload"]}, token=token)
-                disp_data = disp_res.get("data") or disp_res.get("result", {}).get("data") or {}
-                resolved_payload = disp_data.get("payload") or target_show["payload"]
-                post["payload"] = resolved_payload
+                logger.info(f"Found catchup show: '{target_show.get('title')}' - requesting play payload via _resolve_playable_payload")
+                resolved_payload = self._resolve_playable_payload(target_show["payload"])
+                if resolved_payload:
+                    post["payload"] = resolved_payload
 
         play_res = self.api.call_api("content.play", data=post, token=token)
         play_data = play_res.get("data") or play_res.get("result", {}).get("data") or {}
+
+        if not play_data.get("media") and post.get("payload", {}).get("startMode") != "live":
+            # Fallback to live start mode if catchup payload failed
+            logger.info("Catchup payload did not return media, falling back to startMode live")
+            post["payload"] = {
+                "criteria": {"schema": "ContentCriteria", "contentId": f"channel.{base_cid}"},
+                "startMode": "live"
+            }
+            play_res = self.api.call_api("content.play", data=post, token=token)
+            play_data = play_res.get("data") or play_res.get("result", {}).get("data") or {}
 
         # Handle MD stream selection from mosaic
         if md:
@@ -654,8 +676,7 @@ class OneplayProvider(BaseProvider):
                             continue
                         s_ts = int(datetime.fromisoformat(s_iso.replace("Z", "+00:00")).timestamp())
                         e_ts = int(datetime.fromisoformat(e_iso.replace("Z", "+00:00")).timestamp())
-                        img_raw = it.get("image") or ""
-                        img = img_raw.replace("{WIDTH}", "480").replace("{HEIGHT}", "320") if img_raw else ""
+                        img = self._extract_image_url(it.get("image"), 480, 320)
                         actions = it.get("actions") or [{}]
                         params = actions[0].get("params") or {}
                         payload = params.get("payload") or {}
@@ -701,18 +722,22 @@ class OneplayProvider(BaseProvider):
             if tile.get("tracking", {}).get("upsell") or params.get("action", {}).get("call") == "user.upsell.preview":
                 continue
 
-            content_type = params.get("contentType") or tile.get("tracking", {}).get("type") or "movie"
+            tracking = tile.get("tracking") or {}
+            raw_type = str(tracking.get("type") or params.get("contentType") or "").lower()
+            if raw_type in ("show", "series", "podcast", "serial"):
+                content_type = "show"
+            elif raw_type in ("recording", "dvr", "nahravka"):
+                content_type = "recording"
+            else:
+                content_type = "movie"
+
             payload = params.get("payload") or {}
             content_id = payload.get("contentId") or payload.get("criteria", {}).get("contentId") or tile.get("id") or str(tile.get("referenceId", ""))
             if not content_id and payload.get("deeplink"):
                 content_id = str(payload.get("deeplink", {}).get("epgItem") or "")
 
-            img_raw = tile.get("image") or ""
-            if isinstance(img_raw, dict):
-                img_raw = img_raw.get("src") or img_raw.get("url") or ""
-            poster = str(img_raw).replace("{WIDTH}", "400").replace("{HEIGHT}", "600") if img_raw else ""
+            poster = self._extract_image_url(tile.get("image"), 320, 480)
 
-            tracking = tile.get("tracking") or {}
             year = tracking.get("year") or tile.get("year") or ""
             duration = tracking.get("duration") or tile.get("duration") or 0
 
@@ -732,9 +757,9 @@ class OneplayProvider(BaseProvider):
     def get_vod_categories(self) -> List[Dict[str, Any]]:
         """Returns top-level VOD categories."""
         default_cats = [
-            {"id": "all", "title": "⭐ Vše", "categoryId": "1"},
-            {"id": "movies", "title": "🎬 Filmy", "categoryId": "1"},
-            {"id": "series", "title": "📺 Seriály", "categoryId": "2"},
+            {"id": "all", "title": "⭐ Vše", "categoryId": "2"},
+            {"id": "movies", "title": "🎬 Filmy", "categoryId": "2"},
+            {"id": "series", "title": "📺 Seriály", "categoryId": "1"},
             {"id": "recordings", "title": "📼 Nahrávky (Cloud DVR)", "categoryId": "8"},
         ]
         if not self.ensure_authenticated():
@@ -744,7 +769,7 @@ class OneplayProvider(BaseProvider):
         try:
             init_res = self.api.call_api("app.init", data={"payload": {"reason": "start"}}, token=token)
             init_data = init_res.get("data") or init_res.get("result", {}).get("data") or {}
-            cats = [{"id": "all", "title": "⭐ Vše", "categoryId": "1"}]
+            cats = [{"id": "all", "title": "⭐ Vše", "categoryId": "2"}]
             for group in (init_data.get("menu", {}).get("groups") or []):
                 if group.get("position") == "top":
                     for item in (group.get("items") or []):
@@ -795,9 +820,9 @@ class OneplayProvider(BaseProvider):
                         for c in (b.get("carousels") or []):
                             items.extend(self._parse_tiles(c.get("tiles") or []))
             else:
-                cat_id = "1" if category == "movies" else ("2" if category == "series" else ("8" if category == "recordings" else category))
+                cat_id = "2" if category == "movies" else ("1" if category == "series" else ("8" if category == "recordings" else category))
                 if cat_id in ("all", ""):
-                    cat_id = "1"
+                    cat_id = "2"
 
                 res = self.api.call_api("page.category.display", data={"payload": {"categoryId": str(cat_id)}}, token=token)
                 data = res.get("data") or res.get("result", {}).get("data") or []
@@ -832,6 +857,14 @@ class OneplayProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Error fetching Oneplay VOD items: {e}")
 
+        # If requesting series category, ensure items are marked as show
+        if category == "series":
+            for it in items:
+                it["content_type"] = "show"
+        elif category == "movies":
+            for it in items:
+                it["content_type"] = "movie"
+
         # Deduplicate
         unique_items = []
         seen = set()
@@ -848,42 +881,90 @@ class OneplayProvider(BaseProvider):
         }
 
     def get_series_detail(self, series_payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetches seasons and episodes for a TV series."""
+        """Fetches seasons and episodes for a TV series from Jyxo CMS layout."""
         if not self.ensure_authenticated():
             return {}
         token = config.get("oneplay_token")
         try:
             res = self.api.call_api("page.content.display", data={"payload": series_payload}, token=token)
             data = res.get("data") or res.get("result", {}).get("data") or {}
+            meta = data.get("metadata") or {}
+            layout = data.get("layout") or {}
+            blocks = layout.get("blocks") or []
+
+            show_play_payload = None
+            for b in blocks:
+                if b.get("schema") == "ContentHeaderBlock":
+                    act = b.get("mainAction", {}).get("action") or {}
+                    if act.get("call") == "content.play":
+                        show_play_payload = act.get("params", {}).get("payload")
+                if not meta and b.get("schema") == "ContentHeaderBlock":
+                    meta = b
+
+            # Locate TabBlock containing "Celé díly"
+            episodes_block = None
+            for b in blocks:
+                if b.get("schema") == "TabBlock" and b.get("template") == "tabs":
+                    for tab in (b.get("tabs") or []):
+                        tab_name = (tab.get("label") or {}).get("name")
+                        if tab_name == "Celé díly":
+                            if tab.get("isActive"):
+                                episodes_block = b
+                            else:
+                                tab_res = self.api.call_api("tab.display", data={"payload": {"tabId": tab.get("id")}}, token=token)
+                                episodes_block = tab_res.get("data") or tab_res.get("result", {}).get("data") or {}
+                            break
+                    if episodes_block:
+                        break
+
+            target_layout = (episodes_block.get("layout") or {}) if episodes_block else layout
+            target_blocks = target_layout.get("blocks") or blocks
+
             seasons = []
-            for s in (data.get("seasons") or []):
-                seasons.append({
-                    "label": s.get("label", "1. série"),
-                    "carouselId": s.get("carouselId"),
-                    "criteria": s.get("criteria"),
-                })
             episodes = []
-            if not seasons and data.get("episodes"):
-                for ep in data.get("episodes"):
-                    ep_params = ep.get("action", {}).get("params") or {}
+
+            for b in target_blocks:
+                carousels = b.get("carousels") or []
+                if not carousels:
+                    continue
+                carousel = carousels[0]
+                for t in (carousel.get("tiles") or []):
+                    p = (t.get("action", {}).get("params") or {}).get("payload") or {}
                     episodes.append({
-                        "id": str(ep_params.get("payload", {}).get("contentId") or ep.get("id")),
-                        "title": ep.get("title", ""),
-                        "description": ep.get("description", ""),
-                        "duration": ep.get("duration", 0),
-                        "image": (ep.get("image") or "").replace("{WIDTH}", "400").replace("{HEIGHT}", "225"),
-                        "payload": ep_params.get("payload", {}),
+                        "id": str(p.get("contentId") or t.get("id")),
+                        "title": t.get("title", ""),
+                        "description": t.get("description") or t.get("subTitle") or "",
+                        "duration": t.get("duration", 0),
+                        "image": self._extract_image_url(t.get("image"), 480, 270),
+                        "payload": p,
+                        "is_drm": True,
                     })
 
-            img_raw = data.get("image") or data.get("backdrop") or ""
-            poster = str(img_raw).replace("{WIDTH}", "800").replace("{HEIGHT}", "450") if img_raw else ""
+                criteria_list = carousel.get("criteria") or []
+                if criteria_list:
+                    crit = criteria_list[0]
+                    if crit.get("template") == "showSeason":
+                        for item in (crit.get("items") or []):
+                            if item.get("label") and item.get("criteria"):
+                                seasons.append({
+                                    "label": item["label"],
+                                    "carouselId": carousel.get("id"),
+                                    "criteria": item["criteria"],
+                                })
+
+            if seasons:
+                import re
+                seasons.sort(key=lambda s: int((re.findall(r"\d+", s["label"]) or [0])[0]))
+
+            poster = self._extract_image_url(meta.get("image") or data.get("image") or data.get("backdrop"), 800, 450)
 
             return {
-                "title": data.get("title", ""),
-                "description": data.get("description", ""),
+                "title": meta.get("title") or data.get("title", ""),
+                "description": meta.get("description") or meta.get("plot") or data.get("description", ""),
                 "image": poster,
                 "seasons": seasons,
                 "episodes": episodes,
+                "payload": show_play_payload or series_payload
             }
         except Exception as e:
             logger.error(f"Error fetching series detail: {e}")
@@ -908,12 +989,11 @@ class OneplayProvider(BaseProvider):
             for tile in (data.get("tiles") or []):
                 params = tile.get("action", {}).get("params") or {}
                 payload = params.get("payload") or {}
-                img_raw = tile.get("image") or ""
-                poster = str(img_raw).replace("{WIDTH}", "400").replace("{HEIGHT}", "225") if img_raw else ""
+                poster = self._extract_image_url(tile.get("image"), 480, 270)
                 episodes.append({
                     "id": str(payload.get("contentId") or tile.get("id")),
                     "title": tile.get("title", ""),
-                    "description": tile.get("description", ""),
+                    "description": tile.get("description") or tile.get("subTitle") or "",
                     "duration": tile.get("duration", 0),
                     "image": poster,
                     "payload": payload,
@@ -929,6 +1009,32 @@ class OneplayProvider(BaseProvider):
         res = self.get_vod_items(category="8", page=1)
         return res.get("items", [])
 
+    def _resolve_playable_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        If payload is a display payload (e.g. from catalog tile or EPG),
+        resolves it via page.content.display into the actual ContentHeaderBlock play payload.
+        """
+        if not payload:
+            return {}
+        criteria = payload.get("criteria", {})
+        if "startMode" in payload or criteria.get("schema") in ("MDPlaybackCriteria", "ContentPlaybackCriteria", "ChannelPlaybackCriteria"):
+            return payload
+
+        token = config.get("oneplay_token")
+        try:
+            disp_res = self.api.call_api("page.content.display", data={"payload": payload}, token=token)
+            disp_data = disp_res.get("data") or disp_res.get("result", {}).get("data") or {}
+            for block in (disp_data.get("layout", {}).get("blocks") or []):
+                if block.get("schema") == "ContentHeaderBlock":
+                    action = block.get("mainAction", {}).get("action") or {}
+                    if action.get("call") == "content.play":
+                        resolved = action.get("params", {}).get("payload")
+                        if resolved:
+                            return resolved
+        except Exception as e:
+            logger.warning(f"Error resolving playable payload: {e}")
+        return payload
+
     def get_vod_stream(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Calls content.play to retrieve stream URLs and DRM parameters for a VOD title.
@@ -938,8 +1044,15 @@ class OneplayProvider(BaseProvider):
             return None
         token = config.get("oneplay_token")
         try:
+            playable_payload = self._resolve_playable_payload(payload)
+            if not playable_payload:
+                playable_payload = payload
+            if "startMode" not in playable_payload:
+                playable_payload = dict(playable_payload)
+                playable_payload["startMode"] = "start"
+
             post = {
-                "payload": payload,
+                "payload": playable_payload,
                 "playbackCapabilities": {
                     "protocols": ["dash", "hls"],
                     "drm": ["widevine", "fairplay"],
@@ -1015,5 +1128,6 @@ class OneplayProvider(BaseProvider):
             logger.error(f"Error fetching Oneplay VOD stream: {e}")
 
         return None
+
 
 
