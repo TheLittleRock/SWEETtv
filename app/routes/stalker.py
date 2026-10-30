@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, unquote_plus, urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -128,6 +128,9 @@ def _build_epg_info_data(params: Dict[str, Any]) -> Dict[str, List[Dict[str, Any
             prog_id = str(p.get("id") or f"{c_id}_{t_start}")
             is_archive = 1 if (is_catchup and t_start <= now and (now - t_start) <= catchup_duration_sec) else 0
 
+            prog_text = p.get("text", "")
+            prog_desc = p.get("description") or p.get("genre") or ""
+
             ch_programs.append({
                 "id": prog_id,
                 "epg_id": prog_id,
@@ -135,8 +138,10 @@ def _build_epg_info_data(params: Dict[str, Any]) -> Dict[str, List[Dict[str, Any
                 "channel_id": c_id_str,
                 "tvg_id": c_id_str,
                 "tvg-id": c_id_str,
-                "name": p.get("text", ""),
-                "descr": p.get("description") or p.get("genre") or "",
+                "name": prog_text,
+                "title": prog_text,
+                "descr": prog_desc,
+                "description": prog_desc,
                 "time": time.strftime("%H:%M", time.localtime(t_start)),
                 "time_to": time.strftime("%H:%M", time.localtime(t_stop)),
                 "duration": max(0, t_stop - t_start),
@@ -147,6 +152,9 @@ def _build_epg_info_data(params: Dict[str, Any]) -> Dict[str, List[Dict[str, Any
                 "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
                 "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
                 "mark_archive": is_archive,
+                "has_archive": is_archive,
+                "archive": is_archive,
+                "open": 1,
                 "cmd": f"auto /media/archive/{c_id}/{prog_id}.mpg?utc={t_start}&lutc={t_stop}"
             })
 
@@ -194,7 +202,8 @@ def _build_epg_items(
                 continue
 
             if limit_window:
-                if t_stop < now - 86400:
+                # For short EPG / mini-guide: only currently playing and future programs
+                if t_stop <= now:
                     continue
                 if t_start > now + 172800:
                     continue
@@ -216,6 +225,9 @@ def _build_epg_items(
             is_archive = 1 if (is_catchup and t_start <= now and (now - t_start) <= catchup_duration_sec) else 0
             is_playing = 1 if (t_start <= now < t_stop) else 0
 
+            prog_text = p.get("text", "")
+            prog_desc = p.get("description") or p.get("genre") or ""
+
             items.append({
                 "id": prog_id,
                 "epg_id": prog_id,
@@ -223,8 +235,10 @@ def _build_epg_items(
                 "channel_id": str(c_id),
                 "tvg_id": str(c_id),
                 "tvg-id": str(c_id),
-                "name": p.get("text", ""),
-                "descr": p.get("description") or p.get("genre") or "",
+                "name": prog_text,
+                "title": prog_text,
+                "descr": prog_desc,
+                "description": prog_desc,
                 "time": time.strftime("%H:%M", time.localtime(t_start)),
                 "time_to": time.strftime("%H:%M", time.localtime(t_stop)),
                 "duration": max(0, t_stop - t_start),
@@ -236,6 +250,9 @@ def _build_epg_items(
                 "end": stop_dt,
                 "cur_playing": is_playing,
                 "mark_archive": is_archive,
+                "has_archive": is_archive,
+                "archive": is_archive,
+                "open": 1,
                 "cmd": f"auto /media/archive/{c_id}/{prog_id}.mpg?utc={t_start}&lutc={t_stop}"
             })
 
@@ -546,20 +563,27 @@ async def stalker_load(request: Request, token: Optional[str] = None):
         if action == "get_main_info":
             return JSONResponse({
                 "js": {
-                    "mac": mac,
+                    "mac": effective_mac,
                     "phone": "",
                     "ls": "1",
-                    "account_number": "1001",
-                    "tariff_plan_name": "SweetTV Premium"
+                    "status": "1",
+                    "account_number": str(1000 + user.id),
+                    "tariff_plan_name": "SweetTV Premium",
+                    "tv_archive": 1,
+                    "archive": 1,
+                    "have_archive": 1,
+                    "tv_archive_duration": 168,
+                    "archive_duration": 168,
+                    "pass": "0000"
                 }
             })
 
     # 3. Universal Action Handlers (create_link, get_epg_info, get_simple_data_table, get_short_epg)
     # Handled uniformly across req_type == 'itv', 'tv_archive', 'epg', 'stb'
     if action == "create_link":
-        raw_cmd = unquote(str(params.get("cmd", ""))).strip()
+        raw_cmd = unquote_plus(str(params.get("cmd", ""))).strip()
         # Clean possible 'ffmpeg ' or 'auto ' prefix
-        for prefix in ("ffmpeg ", "auto "):
+        for prefix in ("ffmpeg ", "auto ", "ffmpeg+", "auto+"):
             if raw_cmd.lower().startswith(prefix):
                 raw_cmd = raw_cmd[len(prefix):].strip()
 
@@ -722,13 +746,16 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 "max_page_items": max_page_items,
                 "selected_item": 0,
                 "cur_page": page,
-                "data": paged_data
+                "data": paged_data,
+                "epg_listings": paged_data
             }
         })
 
     elif action == "get_short_epg":
         items = _build_epg_items(params, limit_window=True)
-        return JSONResponse({"js": items})
+        size = int(params.get("size", 10) or 10)
+        paged_items = items[:max(1, size)]
+        return JSONResponse({"js": paged_items})
 
     # 4. Live TV (ITV) Catalog & Categories
     elif req_type == "itv":
@@ -756,7 +783,7 @@ async def stalker_load(request: Request, token: Optional[str] = None):
             channels_raw = channel_data.get("list", [])
             categories_map = {cat["id"]: cat.get("caption", "") for cat in channel_data.get("categories", [])}
 
-            target_genre = str(params.get("genre", "*")).strip()
+            target_genre = str(params.get("genre") or params.get("category") or "*").strip()
             quality = config.default_quality
             q_param = f"?quality={quality}" if quality and quality != "auto" else ""
 
@@ -766,10 +793,10 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                 if not ch.get("available"):
                     continue
 
-                ch_cats = ch.get("category", [])
-                cat_id = ch_cats[0] if ch_cats else 1
+                ch_cats = [str(c) for c in ch.get("category", [])]
+                cat_id = ch_cats[0] if ch_cats else "1"
 
-                if target_genre not in ("*", "", "all") and str(cat_id) != target_genre:
+                if target_genre not in ("*", "", "all") and target_genre not in ch_cats and target_genre != cat_id:
                     continue
 
                 idx += 1
@@ -795,6 +822,8 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "fav": 0,
                     "adult": 0,
                     "status": 1,
+                    "use_http_tmp_link": 0,
+                    "use_load_balancing": 0,
                     # Archive / Catchup capability flags
                     "archive": is_catchup,
                     "tv_archive": is_catchup,
@@ -836,7 +865,7 @@ async def stalker_load(request: Request, token: Optional[str] = None):
                     "custom_sid": str(cid),
                     "logo": icon,
                     "tvg_logo": icon,
-                    "cmd": f"ffmpeg {stream_url}"
+                    "cmd": stream_url
                 })
 
             return JSONResponse({
