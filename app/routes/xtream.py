@@ -324,6 +324,10 @@ async def player_api(
         desc = item.get("description", "") if item else ""
         dur = item.get("duration") if item else None
         dur_int = int(dur) if dur is not None and str(dur).isdigit() else 7200
+        h_dur = dur_int // 3600
+        m_dur = (dur_int % 3600) // 60
+        s_dur = dur_int % 60
+        dur_str = f"{h_dur:02d}:{m_dur:02d}:{s_dur:02d}"
         year_val = str(item.get("year", "2024") if item else "2024")
         return JSONResponse(content={
             "info": {
@@ -336,7 +340,7 @@ async def player_api(
                 "genre": "Oneplay",
                 "release_date": year_val,
                 "duration_secs": dur_int,
-                "duration": "02:00:00",
+                "duration": dur_str,
                 "video": {},
                 "audio": {},
                 "bitrate": 5000000
@@ -450,6 +454,10 @@ async def player_api(
                     _vod_cache_by_id[ep_sid] = ep
                     dur_ep = ep.get("duration")
                     dur_ep_int = int(dur_ep) if dur_ep is not None and str(dur_ep).isdigit() else 3000
+                    h_ep = dur_ep_int // 3600
+                    m_ep = (dur_ep_int % 3600) // 60
+                    s_ep = dur_ep_int % 60
+                    dur_ep_str = f"{h_ep:02d}:{m_ep:02d}:{s_ep:02d}"
                     ep_list.append({
                         "id": ep_sid,
                         "episode_num": ep_num,
@@ -459,7 +467,9 @@ async def player_api(
                             "name": ep.get("title", ""),
                             "plot": ep.get("description", ""),
                             "duration_secs": dur_ep_int,
-                            "movie_image": ep.get("image", "")
+                            "duration": dur_ep_str,
+                            "movie_image": ep.get("image", ""),
+                            "bitrate": 5000000
                         }
                     })
                 return s_num, meta, s_key, ep_list
@@ -486,6 +496,10 @@ async def player_api(
                 _vod_cache_by_id[ep_sid] = ep
                 dur_ep = ep.get("duration")
                 dur_ep_int = int(dur_ep) if dur_ep is not None and str(dur_ep).isdigit() else 3000
+                h_ep = dur_ep_int // 3600
+                m_ep = (dur_ep_int % 3600) // 60
+                s_ep = dur_ep_int % 60
+                dur_ep_str = f"{h_ep:02d}:{m_ep:02d}:{s_ep:02d}"
                 ep_list.append({
                     "id": ep_sid,
                     "episode_num": ep_num,
@@ -495,7 +509,9 @@ async def player_api(
                         "name": ep.get("title", ""),
                         "plot": ep.get("description", ""),
                         "duration_secs": dur_ep_int,
-                        "movie_image": ep.get("image", "")
+                        "duration": dur_ep_str,
+                        "movie_image": ep.get("image", ""),
+                        "bitrate": 5000000
                     }
                 })
             episodes_map["1"] = ep_list
@@ -714,19 +730,28 @@ async def xtream_movie_stream(
     media_type = "video/mp4" if is_mp4 else "video/mp2t"
     file_ext = "mp4" if is_mp4 else "ts"
 
+    item = _vod_cache_by_id.get(sid_int)
+
     # Fast probe response for HEAD requests from IPTV players (e.g. TiviMate, VLC, IPTVnator)
     if request.method == "HEAD":
+        head_dur = item.get("duration") if item else 0
+        head_headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
+            "Accept-Ranges": "none",
+        }
+        try:
+            if head_dur and float(head_dur) > 0:
+                head_headers["X-Content-Duration"] = str(int(float(head_dur)))
+                head_headers["Content-Duration"] = str(int(float(head_dur)))
+        except Exception:
+            pass
         return Response(
             status_code=200,
             media_type=media_type,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"'
-            }
+            headers=head_headers
         )
-
-    item = _vod_cache_by_id.get(sid_int)
     if not item or not item.get("payload"):
         # Auto-reload VOD cache if expired or missing
         if config.oneplay_enabled and config.is_oneplay_logged:
@@ -826,6 +851,12 @@ async def xtream_movie_stream(
             except Exception as e:
                 logger.error(f"Error acquiring DRM keys for VOD stream {sid_int}: {e}")
 
+        dur_val = item.get("duration") if item else 0
+        try:
+            duration_sec = float(dur_val) if dur_val is not None else 0.0
+        except Exception:
+            duration_sec = 0.0
+
         # Stream clear MPEG-TS or fragmented MP4 directly via FFmpeg
         headers_dict = {
             "User-Agent": provider_manager.oneplay.api.ua,
@@ -835,16 +866,23 @@ async def xtream_movie_stream(
             stream_url=stream_url,
             decryption_keys=decryption_keys,
             headers=headers_dict,
-            output_format=out_format
+            output_format=out_format,
+            duration_secs=duration_sec
         )
+        resp_headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
+            "Accept-Ranges": "none",
+        }
+        if duration_sec > 0:
+            resp_headers["X-Content-Duration"] = str(int(duration_sec))
+            resp_headers["Content-Duration"] = str(int(duration_sec))
+
         return StreamingResponse(
             content=generator,
             media_type=media_type,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"'
-            }
+            headers=resp_headers
         )
 
     return RedirectResponse(url=stream_url, status_code=302)
