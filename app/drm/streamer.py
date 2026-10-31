@@ -343,11 +343,13 @@ async def ffmpeg_stream_generator(
         "-loglevel", "warning",
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
-        "-user_agent", ua,
     ]
 
-    if header_str:
-        cmd.extend(["-headers", header_str])
+    # Only pass HTTP protocol headers/user_agent if input target is an HTTP(S) URL
+    if input_target.startswith("http://") or input_target.startswith("https://"):
+        cmd.extend(["-user_agent", ua])
+        if header_str:
+            cmd.extend(["-headers", header_str])
 
     # Pass all available decryption keys using cenc_decryption_key
     valid_keys = [k for k in decryption_keys if k and len(k) == 32]
