@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import urllib.parse
 import xml.etree.ElementTree as ET
-from typing import AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 import requests
 
 logger = logging.getLogger("SweetTV.DRM.Streamer")
@@ -45,6 +45,35 @@ ISO_639_MAP: Dict[str, str] = {
     "und": "ces",
 }
 
+ISO_639_2_TO_1: Dict[str, str] = {
+    "ces": "cs",
+    "slk": "sk",
+    "eng": "en",
+    "deu": "de",
+    "fra": "fr",
+    "spa": "es",
+    "ita": "it",
+    "pol": "pl",
+    "rus": "ru",
+    "ukr": "uk",
+    "hun": "hu",
+}
+
+LANGUAGE_NAMES: Dict[str, str] = {
+    "ces": "Čeština",
+    "slk": "Slovenčina",
+    "eng": "English",
+    "deu": "Deutsch",
+    "fra": "Français",
+    "spa": "Español",
+    "ita": "Italiano",
+    "pol": "Polski",
+    "rus": "Русский",
+    "ukr": "Ukrajinština",
+    "hun": "Maďarština",
+    "und": "Čeština",
+}
+
 
 def normalize_lang_code(code: Optional[str]) -> str:
     """Normalizes language code to ISO 639-2 3-letter code, defaulting to 'ces' if empty or unknown."""
@@ -56,6 +85,18 @@ def normalize_lang_code(code: Optional[str]) -> str:
     if len(clean) == 3:
         return clean
     return "ces"
+
+
+def get_iso639_1(code: Optional[str]) -> str:
+    """Returns 2-letter ISO 639-1 code for HLS LANGUAGE attribute."""
+    norm = normalize_lang_code(code)
+    return ISO_639_2_TO_1.get(norm, "cs")
+
+
+def get_language_name(code: Optional[str]) -> str:
+    """Returns human-readable language name for HLS NAME attribute."""
+    norm = normalize_lang_code(code)
+    return LANGUAGE_NAMES.get(norm, norm.upper())
 
 
 def parse_iso8601_duration(dur_str: Optional[str]) -> float:
@@ -91,9 +132,111 @@ def rewrite_mpd_tokens(mpd_content: str, base_url: str) -> str:
     return rewritten
 
 
-def prepare_dash_manifest(
+def parse_dash_manifest_info(
     mpd_content: str,
     base_url: str
+) -> Tuple[float, List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Parses MPD manifest metadata:
+    Returns (duration_secs, video_qualities, audio_tracks, subtitle_tracks).
+    """
+    duration_secs = 0.0
+    qualities: List[Dict[str, Any]] = []
+    audio_tracks: List[Dict[str, Any]] = []
+    subtitle_tracks: List[Dict[str, Any]] = []
+
+    parsed_base = urllib.parse.urlparse(base_url)
+    query_str = parsed_base.query
+    base_dir = base_url.split("?")[0].rsplit("/", 1)[0] + "/"
+
+    try:
+        root = ET.fromstring(mpd_content)
+        ns = {"mpd": "urn:mpeg:dash:schema:mpd:2011"}
+
+        dur_attr = root.get("mediaPresentationDuration")
+        if dur_attr:
+            duration_secs = parse_iso8601_duration(dur_attr)
+
+        for as_elem in root.findall(".//mpd:AdaptationSet", ns):
+            ct = (as_elem.get("contentType") or "").lower()
+            mime = (as_elem.get("mimeType") or "").lower()
+            lang = as_elem.get("lang")
+
+            is_video = ct == "video" or "video/" in mime
+            is_audio = ct == "audio" or "audio/" in mime
+            is_text = ct in ("text", "subtitles") or "vtt" in mime or "text/" in mime
+
+            if is_video:
+                for rep in as_elem.findall("mpd:Representation", ns):
+                    h = int(rep.get("height", 0) or 0)
+                    w = int(rep.get("width", 0) or 0)
+                    bw = int(rep.get("bandwidth", 0) or 0)
+                    rep_id = rep.get("id", "")
+                    label = f"{h}p" if h > 0 else (f"{bw // 1000}k" if bw > 0 else rep_id)
+                    qualities.append({
+                        "label": label,
+                        "height": h,
+                        "width": w,
+                        "bandwidth": bw,
+                        "rep_id": rep_id
+                    })
+            elif is_audio:
+                norm_lang = normalize_lang_code(lang)
+                iso1 = get_iso639_1(norm_lang)
+                name = get_language_name(norm_lang)
+                reps = as_elem.findall("mpd:Representation", ns)
+                rep_id = reps[0].get("id", "") if reps else ""
+                audio_tracks.append({
+                    "index": len(audio_tracks),
+                    "lang": norm_lang,
+                    "iso639_1": iso1,
+                    "name": name,
+                    "rep_id": rep_id
+                })
+            elif is_text:
+                norm_lang = normalize_lang_code(lang)
+                iso1 = get_iso639_1(norm_lang)
+                name = get_language_name(norm_lang)
+                vtt_url = ""
+                base_elem = as_elem.find("mpd:BaseURL", ns)
+                if base_elem is None:
+                    reps = as_elem.findall("mpd:Representation", ns)
+                    if reps:
+                        base_elem = reps[0].find("mpd:BaseURL", ns)
+                if base_elem is not None and base_elem.text:
+                    vtt_url = urllib.parse.urljoin(base_dir, base_elem.text.strip())
+                    if query_str and query_str not in vtt_url:
+                        sep = "&" if "?" in vtt_url else "?"
+                        vtt_url = f"{vtt_url}{sep}{query_str}"
+                subtitle_tracks.append({
+                    "index": len(subtitle_tracks),
+                    "lang": norm_lang,
+                    "iso639_1": iso1,
+                    "name": name,
+                    "vtt_url": vtt_url
+                })
+
+        # Sort qualities by height descending, then bandwidth descending
+        qualities.sort(key=lambda q: (q["height"], q["bandwidth"]), reverse=True)
+        if not audio_tracks:
+            audio_tracks.append({
+                "index": 0,
+                "lang": "ces",
+                "iso639_1": "cs",
+                "name": "Čeština",
+                "rep_id": ""
+            })
+
+    except Exception as e:
+        logger.warning(f"Error parsing MPD info: {e}")
+
+    return duration_secs, qualities, audio_tracks, subtitle_tracks
+
+
+def prepare_dash_manifest(
+    mpd_content: str,
+    base_url: str,
+    target_quality: Optional[str] = None
 ) -> Tuple[str, List[str], List[str], float]:
     """
     Prepares a DASH manifest for streaming:
@@ -162,7 +305,7 @@ def prepare_dash_manifest(
             is_text = ct in ("text", "subtitles") or "vtt" in mime or "text/" in mime
 
             if is_video:
-                # Retain only the highest bandwidth video representation
+                # Retain desired quality or highest bandwidth video representation
                 reps = as_elem.findall("mpd:Representation", ns)
                 if reps:
                     def _rep_bw(r):
@@ -170,7 +313,25 @@ def prepare_dash_manifest(
                             return int(r.get("bandwidth", 0))
                         except Exception:
                             return 0
-                    best_rep = max(reps, key=_rep_bw)
+                    def _rep_h(r):
+                        try:
+                            return int(r.get("height", 0))
+                        except Exception:
+                            return 0
+
+                    best_rep = None
+                    if target_quality:
+                        tq = target_quality.lower().strip()
+                        for r in reps:
+                            h = _rep_h(r)
+                            bw = _rep_bw(r)
+                            rep_id = (r.get("id") or "").lower()
+                            if tq in (f"{h}p", f"{h}", f"{bw // 1000}k", rep_id):
+                                best_rep = r
+                                break
+                    if best_rep is None:
+                        best_rep = max(reps, key=_rep_bw)
+
                     for rep in reps:
                         if rep != best_rep:
                             as_elem.remove(rep)
@@ -218,14 +379,14 @@ async def ffmpeg_stream_generator(
     output_format: str = "ts",
     duration_secs: Optional[float] = None,
     start_time: float = 0.0,
-    chunk_size: int = 524288
+    chunk_size: int = 2097152
 ) -> AsyncGenerator[bytes, None]:
     """
     Spawns modern FFmpeg to decrypt and remux a DASH/HLS CENC stream on-the-fly
     into a standard MPEG-TS or fragmented MP4 byte stream without re-encoding (-c copy).
     Preserves all audio streams, language codes (defaulting to Czech 'ces'), and subtitles.
     Supports seek offsets via start_time parameter (-ss).
-    Injects presentation duration into initial MP4 moov atom so players report full length.
+    Optimized for high-throughput streaming (2 MB chunks, multi-threading, network reconnect).
     """
     ffmpeg_bin = find_ffmpeg_binary()
     if not ffmpeg_bin:
@@ -285,6 +446,13 @@ async def ffmpeg_stream_generator(
         "-loglevel", "warning",
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
+        "-reconnect", "1",
+        "-reconnect_at_eof", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "2",
+        "-probesize", "10000000",
+        "-analyzeduration", "10000000",
+        "-threads", "0",
     ]
 
     # Fast input seek if start_time specified (seconds)

@@ -141,7 +141,7 @@ def test_xtream_movie_head_probe_content_length():
 
 
 def test_xtream_movie_m3u8_hls_playlist_generation(monkeypatch):
-    """Verify GET .m3u8 on VOD generates a valid HLS VOD playlist with segments."""
+    """Verify GET .m3u8 on VOD generates a valid HLS Master Playlist and variant playlist."""
     from starlette.testclient import TestClient
     from app.main import app
     from app.routes.xtream import _vod_cache_by_id
@@ -150,28 +150,97 @@ def test_xtream_movie_m3u8_hls_playlist_generation(monkeypatch):
     _vod_cache_by_id[39998] = {
         "id": "movie.mock2",
         "title": "Mock Movie 2",
-        "duration": 60,  # 60s -> 6 segments of 10s
+        "duration": 60,
         "payload": {"contentId": "movie.mock2"}
     }
 
-    # Mock get_vod_stream to return DRM stream
+    sample_mpd = """<?xml version="1.0" encoding="utf-8"?>
+    <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" mediaPresentationDuration="PT60.000S">
+      <Period>
+        <AdaptationSet contentType="video" mimeType="video/mp4">
+          <Representation id="v1" bandwidth="5000000" width="1920" height="1080" />
+          <Representation id="v2" bandwidth="2500000" width="1280" height="720" />
+        </AdaptationSet>
+        <AdaptationSet contentType="audio" lang="ces" mimeType="audio/mp4">
+          <Representation id="a1" bandwidth="128000" />
+        </AdaptationSet>
+        <AdaptationSet contentType="audio" lang="eng" mimeType="audio/mp4">
+          <Representation id="a2" bandwidth="128000" />
+        </AdaptationSet>
+      </Period>
+    </MPD>"""
+
+    class MockResp:
+        status_code = 200
+        text = sample_mpd
+
+    monkeypatch.setattr("requests.get", lambda *args, **kwargs: MockResp())
     monkeypatch.setattr(
         provider_manager.oneplay,
         "get_vod_stream",
-        lambda payload: {"manifest_type": "mpd", "url": "https://cdn.mock/dash.mpd", "is_drm": True}
+        lambda payload: {"manifest_type": "mpd", "url": "https://cdn.mock/dash.mpd", "is_drm": False}
     )
 
     client = TestClient(app)
+
+    # 1. Master Playlist request
     resp = client.get("/movie/sweettv/sweet/39998.m3u8")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/vnd.apple.mpegurl"
     text = resp.text
     assert "#EXTM3U" in text
-    assert "#EXT-X-PLAYLIST-TYPE:VOD" in text
-    assert "#EXT-X-ENDLIST" in text
-    assert "/vod_segment/sweettv/sweet/39998/0.ts" in text
-    assert "/vod_segment/sweettv/sweet/39998/10.ts" in text
-    assert "/vod_segment/sweettv/sweet/39998/50.ts" in text
+    assert "#EXT-X-VERSION:4" in text
+    assert '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Čeština",LANGUAGE="cs"' in text
+    assert '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English",LANGUAGE="en"' in text
+    assert "#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080" in text
+    assert "/vod_variant/sweettv/sweet/39998/1080p.m3u8" in text
+    assert "/vod_variant/sweettv/sweet/39998/720p.m3u8" in text
+
+    # 2. Variant Playlist request
+    resp_var = client.get("/vod_variant/sweettv/sweet/39998/1080p.m3u8")
+    assert resp_var.status_code == 200
+    assert resp_var.headers["content-type"] == "application/vnd.apple.mpegurl"
+    v_text = resp_var.text
+    assert "#EXTM3U" in v_text
+    assert "#EXT-X-PLAYLIST-TYPE:VOD" in v_text
+    assert "#EXT-X-ENDLIST" in v_text
+    assert "/vod_segment/sweettv/sweet/39998/0.ts?quality=1080p" in v_text
+    assert "/vod_segment/sweettv/sweet/39998/50.ts?quality=1080p" in v_text
+
+
+def test_series_episode_filtering_and_formatting():
+    """Verify filtering of specials/pilots and correct S0XE0X formatting."""
+    from app.routes.xtream import (
+        is_special_episode,
+        parse_season_number,
+        format_episode_title
+    )
+
+    # Specials must be excluded
+    assert is_special_episode("Pilotní díl") is True
+    assert is_special_episode("Pilot") is True
+    assert is_special_episode("Vánoční speciál 2018") is True
+    assert is_special_episode("Velká trojka") is True
+    assert is_special_episode("Bonus: Ze zákulisí") is True
+    assert is_special_episode("Ukázka z dalšího dílu") is True
+    assert is_special_episode("Trailer") is True
+
+    # Regular episodes must NOT be excluded
+    assert is_special_episode("1. díl") is False
+    assert is_special_episode("214. díl") is False
+    assert is_special_episode("530., 531. díl") is False
+    assert is_special_episode("Láska s překážkami") is False
+
+    # Season number parsing
+    assert parse_season_number("20. série") == 20
+    assert parse_season_number("1. série") == 1
+    assert parse_season_number("Season 3") == 3
+    assert parse_season_number(None, fallback=5) == 5
+
+    # Episode title formatting with SxxExx
+    assert format_episode_title(1, 1, "1. díl") == "S01E01 - 1. díl"
+    assert format_episode_title(1, 214, "214. díl") == "S01E214 - 214. díl"
+    assert format_episode_title(20, 5, "5. díl") == "S20E05 - 5. díl"
 
 
 def test_xtream_vod_and_series_m3u8_container_extension():
