@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import shutil
-import struct
 import tempfile
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -71,71 +70,6 @@ def parse_iso8601_duration(dur_str: Optional[str]) -> float:
     minutes = float(m.group("minutes") or 0)
     s = float(m.group("seconds") or 0)
     return h * 3600.0 + minutes * 60.0 + s
-
-
-def patch_mp4_duration(buffer: bytes, duration_sec: float) -> bytes:
-    """
-    Patches mvhd, tkhd, and mdhd boxes in the initial MP4 moov atom
-    to report the presentation's real duration instead of 0.
-    Ensures players (VLC, IPTVnator, web players) report the true movie/episode length.
-    """
-    if duration_sec <= 0 or len(buffer) < 32:
-        return buffer
-
-    data = bytearray(buffer)
-    # 1. Locate and patch mvhd
-    mvhd_idx = data.find(b"mvhd")
-    if mvhd_idx == -1:
-        return buffer
-
-    ver = data[mvhd_idx + 4]
-    mv_ts = 0
-    if ver == 0:
-        mv_ts = struct.unpack(">I", data[mvhd_idx + 16 : mvhd_idx + 20])[0]
-        if mv_ts > 0:
-            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFF)
-            data[mvhd_idx + 20 : mvhd_idx + 24] = struct.pack(">I", val)
-    elif ver == 1:
-        mv_ts = struct.unpack(">I", data[mvhd_idx + 24 : mvhd_idx + 28])[0]
-        if mv_ts > 0:
-            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFFFFFFFFFF)
-            data[mvhd_idx + 28 : mvhd_idx + 36] = struct.pack(">Q", val)
-
-    # 2. Patch all tkhd boxes (Track headers)
-    pos = 0
-    while True:
-        idx = data.find(b"tkhd", pos)
-        if idx == -1:
-            break
-        t_ver = data[idx + 4]
-        if t_ver == 0 and mv_ts > 0:
-            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFF)
-            data[idx + 24 : idx + 28] = struct.pack(">I", val)
-        elif t_ver == 1 and mv_ts > 0:
-            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFFFFFFFFFF)
-            data[idx + 32 : idx + 40] = struct.pack(">Q", val)
-        pos = idx + 4
-
-    # 3. Patch all mdhd boxes (Media headers)
-    pos = 0
-    while True:
-        idx = data.find(b"mdhd", pos)
-        if idx == -1:
-            break
-        m_ver = data[idx + 4]
-        if m_ver == 0:
-            md_ts = struct.unpack(">I", data[idx + 16 : idx + 20])[0]
-            if md_ts > 0:
-                val = min(max(int(duration_sec * md_ts), 0), 0xFFFFFFFF)
-                data[idx + 20 : idx + 24] = struct.pack(">I", val)
-        elif m_ver == 1:
-            md_ts = struct.unpack(">I", data[idx + 24 : idx + 28])[0]
-            if md_ts > 0:
-                val = min(max(int(duration_sec * md_ts), 0), 0xFFFFFFFFFFFFFFFF)
-                data[idx + 28 : idx + 36] = struct.pack(">Q", val)
-        pos = idx + 4
-
-    return bytes(data)
 
 
 def find_ffmpeg_binary() -> Optional[str]:
@@ -436,17 +370,10 @@ async def ffmpeg_stream_generator(
         stderr_task = asyncio.create_task(read_stderr())
 
         total_bytes = 0
-        first_chunk_patched = False
         while True:
             chunk = await proc.stdout.read(chunk_size)
             if not chunk:
                 break
-
-            # Patch initial MP4 moov atom with real presentation duration
-            if not first_chunk_patched and output_format.lower() == "mp4" and target_duration > 0:
-                chunk = patch_mp4_duration(chunk, target_duration)
-                first_chunk_patched = True
-
             total_bytes += len(chunk)
             yield chunk
 

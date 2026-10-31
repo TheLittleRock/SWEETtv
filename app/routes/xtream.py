@@ -293,7 +293,7 @@ async def player_api(
                     "rating_5based": 3.75,
                     "added": "1600000000",
                     "category_id": cat_filter or "3000",
-                    "container_extension": "mp4",
+                    "container_extension": "m3u8",
                     "custom_sid": "",
                     "direct_source": ""
                 })
@@ -348,12 +348,13 @@ async def player_api(
                 "duration": dur_str,
                 "video": {},
                 "audio": {},
-                "bitrate": 5000000
+                "bitrate": 6000000,
+                "filesize": int((dur_int * 6000000) / 8)
             },
             "movie_data": {
                 "stream_id": vid,
                 "name": name,
-                "container_extension": "mp4"
+                "container_extension": "m3u8"
             }
         })
 
@@ -467,14 +468,15 @@ async def player_api(
                         "id": ep_sid,
                         "episode_num": ep_num,
                         "title": ep.get("title", f"Díl {ep_num}"),
-                        "container_extension": "mp4",
+                        "container_extension": "m3u8",
                         "info": {
                             "name": ep.get("title", ""),
                             "plot": ep.get("description", ""),
                             "duration_secs": dur_ep_int,
                             "duration": dur_ep_str,
                             "movie_image": ep.get("image", ""),
-                            "bitrate": 5000000
+                            "bitrate": 6000000,
+                            "filesize": int((dur_ep_int * 6000000) / 8)
                         }
                     })
                 return s_num, meta, s_key, ep_list
@@ -509,14 +511,15 @@ async def player_api(
                     "id": ep_sid,
                     "episode_num": ep_num,
                     "title": ep.get("title", f"Díl {ep_num}"),
-                    "container_extension": "mp4",
+                    "container_extension": "m3u8",
                     "info": {
                         "name": ep.get("title", ""),
                         "plot": ep.get("description", ""),
                         "duration_secs": dur_ep_int,
                         "duration": dur_ep_str,
                         "movie_image": ep.get("image", ""),
-                        "bitrate": 5000000
+                        "bitrate": 6000000,
+                        "filesize": int((dur_ep_int * 6000000) / 8)
                     }
                 })
             episodes_map["1"] = ep_list
@@ -803,10 +806,8 @@ async def xtream_movie_stream(
             "Access-Control-Allow-Origin": "*",
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
-            "Accept-Ranges": "bytes" if not is_m3u8 else "none",
+            "Accept-Ranges": "none",
         }
-        if not is_m3u8:
-            head_headers["Content-Length"] = str(total_bytes)
         if duration_sec > 0:
             head_headers["X-Content-Duration"] = str(int(duration_sec))
             head_headers["Content-Duration"] = str(int(duration_sec))
@@ -865,35 +866,12 @@ async def xtream_movie_stream(
             }
         )
 
-    # 3. Direct MPEG-TS or fragmented MP4 streaming via FFmpeg with HTTP Range seeking
-    range_header = request.headers.get("range")
+    # 3. Direct MPEG-TS or fragmented MP4 streaming via FFmpeg
     start_param = request.query_params.get("start") or request.query_params.get("t")
-
     start_sec = 0.0
-    start_byte = 0
-    end_byte = total_bytes - 1
-    is_range = False
-
     if start_param:
         try:
             start_sec = max(0.0, float(start_param))
-            if duration_sec > 0:
-                start_byte = int((start_sec / duration_sec) * total_bytes)
-            is_range = True
-        except ValueError:
-            pass
-    elif range_header and range_header.startswith("bytes="):
-        try:
-            r_str = range_header[6:].strip()
-            parts = r_str.split("-", 1)
-            if parts[0]:
-                start_byte = int(parts[0])
-            if len(parts) > 1 and parts[1]:
-                end_byte = int(parts[1])
-            is_range = True
-            if duration_sec > 0 and total_bytes > 0:
-                start_ratio = min(max(float(start_byte) / float(total_bytes), 0.0), 0.999)
-                start_sec = round(start_ratio * duration_sec, 2)
         except ValueError:
             pass
 
@@ -939,20 +917,11 @@ async def xtream_movie_stream(
         "Access-Control-Allow-Origin": "*",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
-        "Accept-Ranges": "bytes",
+        "Accept-Ranges": "none",
     }
     if duration_sec > 0:
         resp_headers["X-Content-Duration"] = str(int(duration_sec))
         resp_headers["Content-Duration"] = str(int(duration_sec))
-
-    if is_range:
-        resp_headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/{total_bytes}"
-        return StreamingResponse(
-            content=generator,
-            status_code=206,
-            media_type=media_type,
-            headers=resp_headers
-        )
 
     return StreamingResponse(
         content=generator,
@@ -1052,9 +1021,12 @@ async def xtream_vod_segment(
         cmd.extend(["-cenc_decryption_key", session["keys"][0]])
     cmd.extend([
         "-i", session["mpd_path"],
+        "-map", "0:v:0",
+        "-map", "0:a?",
         "-c:v", "copy",
         "-c:a", "copy",
         "-t", "10",
+        "-output_ts_offset", str(start_sec),
         "-f", "mpegts",
         "pipe:1"
     ])

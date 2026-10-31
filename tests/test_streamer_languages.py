@@ -4,7 +4,6 @@ import pytest
 from app.drm.streamer import (
     normalize_lang_code,
     parse_iso8601_duration,
-    patch_mp4_duration,
     prepare_dash_manifest,
 )
 
@@ -105,32 +104,6 @@ def test_prepare_dash_manifest_no_lang_defaults_to_ces():
     assert duration == pytest.approx(6330.0, 0.01)
 
 
-def test_patch_mp4_duration():
-    # Build a minimal synthetic moov buffer containing mvhd, tkhd, mdhd
-    mvhd = bytearray(b"\x00\x00\x00\x6c" + b"mvhd" + b"\x00\x00\x00\x00" + b"\x00" * 8 + struct.pack(">II", 1000, 0) + b"\x00" * 80)
-    tkhd = bytearray(b"\x00\x00\x00\x5c" + b"tkhd" + b"\x00\x00\x00\x00" + b"\x00" * 16 + struct.pack(">I", 0) + b"\x00" * 64)
-    mdhd = bytearray(b"\x00\x00\x00\x20" + b"mdhd" + b"\x00\x00\x00\x00" + b"\x00" * 8 + struct.pack(">II", 12800, 0) + b"\x00" * 8)
-
-    synthetic_buffer = bytes(mvhd + tkhd + mdhd)
-    target_sec = 1925.16
-    patched = patch_mp4_duration(synthetic_buffer, target_sec)
-
-    # Verify mvhd duration patched
-    mv_idx = patched.find(b"mvhd")
-    mv_dur = struct.unpack(">I", patched[mv_idx + 20 : mv_idx + 24])[0]
-    assert mv_dur == int(target_sec * 1000)
-
-    # Verify tkhd duration patched
-    tk_idx = patched.find(b"tkhd")
-    tk_dur = struct.unpack(">I", patched[tk_idx + 24 : tk_idx + 28])[0]
-    assert tk_dur == int(target_sec * 1000)
-
-    # Verify mdhd duration patched
-    md_idx = patched.find(b"mdhd")
-    md_dur = struct.unpack(">I", patched[md_idx + 20 : md_idx + 24])[0]
-    assert md_dur == int(target_sec * 12800)
-
-
 def test_xtream_movie_head_probe_content_length():
     """Verify HEAD requests return non-zero Content-Length and Accept-Ranges: bytes for players like VLC."""
     from starlette.testclient import TestClient
@@ -151,18 +124,14 @@ def test_xtream_movie_head_probe_content_length():
     resp_ts = client.head("/movie/sweettv/sweet/39999.ts")
     assert resp_ts.status_code == 200
     assert resp_ts.headers["content-type"] == "video/mp2t"
-    assert resp_ts.headers["accept-ranges"] == "bytes"
-    cl_ts = int(resp_ts.headers["content-length"])
-    assert cl_ts > 1_000_000_000  # ~4.4 GB for 5400s
+    assert resp_ts.headers["accept-ranges"] == "none"
     assert resp_ts.headers["x-content-duration"] == "5400"
 
     # 2. HEAD on .mp4
     resp_mp4 = client.head("/movie/sweettv/sweet/39999.mp4")
     assert resp_mp4.status_code == 200
     assert resp_mp4.headers["content-type"] == "video/mp4"
-    assert resp_mp4.headers["accept-ranges"] == "bytes"
-    cl_mp4 = int(resp_mp4.headers["content-length"])
-    assert cl_mp4 > 1_000_000_000
+    assert resp_mp4.headers["accept-ranges"] == "none"
     assert resp_mp4.headers["x-content-duration"] == "5400"
 
     # 3. HEAD on .m3u8
@@ -203,5 +172,28 @@ def test_xtream_movie_m3u8_hls_playlist_generation(monkeypatch):
     assert "/vod_segment/sweettv/sweet/39998/0.ts" in text
     assert "/vod_segment/sweettv/sweet/39998/10.ts" in text
     assert "/vod_segment/sweettv/sweet/39998/50.ts" in text
+
+
+def test_xtream_vod_and_series_m3u8_container_extension():
+    """Verify get_vod_info and get_series_info return container_extension: m3u8, bitrate, and filesize."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.routes.xtream import _vod_cache_by_id
+
+    _vod_cache_by_id[39997] = {
+        "id": "vod.39997",
+        "title": "Test VOD",
+        "duration": 3600,
+        "payload": {"contentId": "vod.39997"}
+    }
+
+    client = TestClient(app)
+    resp = client.get("/player_api.php?username=sweettv&password=sweet&action=get_vod_info&vod_id=39997")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["movie_data"]["container_extension"] == "m3u8"
+    assert data["info"]["bitrate"] == 6000000
+    assert data["info"]["filesize"] == int((3600 * 6000000) / 8)
+
 
 
