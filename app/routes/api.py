@@ -88,6 +88,9 @@ class SettingsUpdate(BaseModel):
     oneplay_password: Optional[str] = None
     oneplay_pin: Optional[str] = None
     oneplay_device_name: Optional[str] = None
+    oneplay_wv_api_url: Optional[str] = None
+    oneplay_drm_license_url: Optional[str] = None
+    oneplay_drm_upstream_repo: Optional[str] = None
 
 
 class OneplayLoginRequest(BaseModel):
@@ -375,6 +378,9 @@ def get_status(current_user: User = Depends(require_user)) -> Dict[str, Any]:
         "oneplay_username": config.get("oneplay_username", ""),
         "oneplay_profile": config.get("oneplay_profile", ""),
         "oneplay_token_expires_in": max(0, int(config.get("oneplay_token_valid_to", 0)) - now) if config.get("oneplay_token_valid_to") else 0,
+        "oneplay_wv_api_url": config.oneplay_wv_api_url,
+        "oneplay_drm_license_url": config.oneplay_drm_license_url,
+        "oneplay_drm_upstream_repo": config.oneplay_drm_upstream_repo,
         "uptime_seconds": int(now - SERVER_START_TIME),
         "user": {
             "username": current_user.username,
@@ -769,6 +775,15 @@ def update_settings(
     if payload.oneplay_device_name is not None:
         changed["oneplay_device_name"] = payload.oneplay_device_name.strip()
 
+    if payload.oneplay_wv_api_url is not None and payload.oneplay_wv_api_url.strip():
+        changed["oneplay_wv_api_url"] = payload.oneplay_wv_api_url.strip()
+
+    if payload.oneplay_drm_license_url is not None and payload.oneplay_drm_license_url.strip():
+        changed["oneplay_drm_license_url"] = payload.oneplay_drm_license_url.strip()
+
+    if payload.oneplay_drm_upstream_repo is not None and payload.oneplay_drm_upstream_repo.strip():
+        changed["oneplay_drm_upstream_repo"] = payload.oneplay_drm_upstream_repo.strip()
+
     if changed:
         config.update(changed)
 
@@ -820,11 +835,13 @@ def get_oneplay_series_detail_api(
 def get_oneplay_season_episodes_api(
     carousel_id: str = Query(..., description="Season carousel ID"),
     criteria: Any = Body(..., description="Season criteria"),
-    sort_order: str = Query("ASC", description="Sort order: ASC or DESC"),
+    sort_order: str = Query("DESC", description="Sort order: ASC or DESC"),
     current_user: User = Depends(require_user)
 ) -> Dict[str, Any]:
     """Returns episode tiles for a specific series season."""
-    crit_val = criteria.get("criteria", criteria) if isinstance(criteria, dict) else criteria
+    crit_val = criteria
+    if isinstance(criteria, dict):
+        crit_val = criteria.get("filterCriterias") or criteria.get("criteria") or criteria
     episodes = provider_manager.oneplay.get_season_episodes(carousel_id, crit_val, sort_order)
     return {"episodes": episodes}
 
@@ -901,4 +918,22 @@ async def oneplay_drm_license_proxy(
     except Exception as e:
         logger.error(f"Axinom DRM license proxy unexpected error: {e}")
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/admin/drm/test")
+def test_drm_pipeline_api(
+    current_user: User = Depends(require_admin)
+) -> Dict[str, Any]:
+    """Tests connectivity to Sune WV Cloud API and Oneplay / Jyxo license server."""
+    from app.drm.oneplay_wv import drm_manager
+    return drm_manager.test_drm_pipeline()
+
+
+@router.get("/admin/drm/check-updates")
+def check_drm_updates_api(
+    current_user: User = Depends(require_admin)
+) -> Dict[str, Any]:
+    """Checks for latest commits in Sunecz Media Downloader repository."""
+    from app.drm.oneplay_wv import drm_manager
+    return drm_manager.check_upstream_updates()
 

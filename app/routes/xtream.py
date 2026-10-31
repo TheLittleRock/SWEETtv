@@ -4,10 +4,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+import requests
 
 from app.auth import authenticate_user
 from app.config import config
+from app.drm.oneplay_wv import drm_manager
+from app.drm.streamer import ffmpeg_stream_generator
 from app.epg import get_cached_channels
 from app.providers.manager import provider_manager
 from app.routes.iptv import clean_id, get_effective_base_url
@@ -648,7 +651,7 @@ def xtream_timeshift_stream(
 @router.get("/movie/{username}/{password}/{stream_id}.ts")
 @router.get("/movie/{username}/{password}/{stream_id}.mp4")
 @router.get("/movie/{username}/{password}/{stream_id}")
-def xtream_movie_stream(
+async def xtream_movie_stream(
     request: Request,
     username: str,
     password: str,
@@ -711,28 +714,81 @@ def xtream_movie_stream(
     if not stream_info or not stream_info.get("url"):
         raise HTTPException(status_code=502, detail="Failed to resolve VOD stream from Oneplay.")
 
-    if stream_info.get("manifest_type") == "hls":
+    manifest_type = stream_info.get("manifest_type")
+    stream_url = stream_info.get("url")
+    is_drm = bool(stream_info.get("is_drm"))
+
+    # 1. Clear HLS stream -> manifest rewrite with Oneplay CDN tokens
+    if manifest_type == "hls" and not is_drm:
         base_url = get_effective_base_url(request)
-        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["url"], base_url, start_at_begin=False)
+        rewritten = provider_manager.oneplay.rewrite_manifest(stream_url, base_url, start_at_begin=False)
         return Response(
             content=rewritten,
             media_type="application/vnd.apple.mpegurl",
             headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"}
         )
 
-    return RedirectResponse(url=stream_info["url"], status_code=302)
+    # 2. Widevine DRM DASH or standard DASH -> on-the-fly decryption and remuxing to MPEG-TS via FFmpeg
+    if manifest_type == "mpd" or is_drm:
+        decryption_keys = []
+        if is_drm:
+            drm_meta = stream_info.get("drm") or {}
+            token_val = drm_meta.get("token") or ""
+            lic_url = drm_meta.get("license_url")
+            try:
+                # Fetch MPD to extract Widevine PSSH
+                h = {
+                    "User-Agent": provider_manager.oneplay.api.ua,
+                    "Referer": "https://www.oneplay.cz/",
+                    "Origin": "https://www.oneplay.cz"
+                }
+                r_mpd = requests.get(stream_url, headers=h, timeout=10)
+                if r_mpd.status_code == 200:
+                    pssh = drm_manager.extract_pssh_from_mpd(r_mpd.text, base_url=stream_url)
+                    if pssh:
+                        keys = drm_manager.get_decryption_keys(pssh, token_val, license_url=lic_url)
+                        decryption_keys = [k[1] for k in keys if k and len(k) > 1 and k[1]]
+                        logger.info(f"Derived {len(decryption_keys)} decryption key(s) for VOD stream {sid_int}")
+                    else:
+                        logger.warning(f"Could not extract PSSH from MPD manifest for VOD {sid_int}")
+                else:
+                    logger.error(f"Failed to fetch MPD manifest (HTTP {r_mpd.status_code}) for VOD {sid_int}")
+            except Exception as e:
+                logger.error(f"Error acquiring DRM keys for VOD stream {sid_int}: {e}")
+
+        # Stream clear MPEG-TS directly via FFmpeg
+        headers_dict = {
+            "User-Agent": provider_manager.oneplay.api.ua,
+            "Referer": "https://www.oneplay.cz/"
+        }
+        generator = ffmpeg_stream_generator(
+            stream_url=stream_url,
+            decryption_keys=decryption_keys,
+            headers=headers_dict
+        )
+        return StreamingResponse(
+            content=generator,
+            media_type="video/mp2t",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Content-Disposition": f'inline; filename="vod_{sid_int}.ts"'
+            }
+        )
+
+    return RedirectResponse(url=stream_url, status_code=302)
 
 
 @router.get("/series/{username}/{password}/{stream_id}.m3u8")
 @router.get("/series/{username}/{password}/{stream_id}.ts")
 @router.get("/series/{username}/{password}/{stream_id}.mp4")
 @router.get("/series/{username}/{password}/{stream_id}")
-def xtream_series_stream(
+async def xtream_series_stream(
     request: Request,
     username: str,
     password: str,
     stream_id: str
 ):
     """Playback endpoint for Xtream Codes TV series episodes."""
-    return xtream_movie_stream(request, username, password, stream_id)
+    return await xtream_movie_stream(request, username, password, stream_id)
 

@@ -152,6 +152,15 @@ async function updateSystemStatus() {
             accountDisplayUuid.textContent = data.uuid;
         }
 
+        const wvInput = document.getElementById("setting-oneplay-wv-url");
+        if (wvInput && data.oneplay_wv_api_url && !wvInput.matches(":focus")) {
+            wvInput.value = data.oneplay_wv_api_url;
+        }
+        const licInput = document.getElementById("setting-oneplay-drm-license-url");
+        if (licInput && data.oneplay_drm_license_url && !licInput.matches(":focus")) {
+            licInput.value = data.oneplay_drm_license_url;
+        }
+
         tokenRemaining = data.token_expires_in_seconds || 0;
     } catch (err) {
         console.error("Failed to update status:", err);
@@ -722,13 +731,18 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             try {
-                if (enabledEl) {
-                    await fetch("/api/settings", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ oneplay_enabled: enabledEl.checked })
-                    });
-                }
+                const drmSettings = {};
+                const wvUrlEl = document.getElementById("setting-oneplay-wv-url");
+                const licUrlEl = document.getElementById("setting-oneplay-drm-license-url");
+                if (enabledEl) drmSettings.oneplay_enabled = enabledEl.checked;
+                if (wvUrlEl && wvUrlEl.value.trim()) drmSettings.oneplay_wv_api_url = wvUrlEl.value.trim();
+                if (licUrlEl && licUrlEl.value.trim()) drmSettings.oneplay_drm_license_url = licUrlEl.value.trim();
+
+                await fetch("/api/settings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(drmSettings)
+                });
 
                 const res = await fetch("/api/provider/oneplay/login", {
                     method: "POST",
@@ -1142,7 +1156,8 @@ function handleVodClick(itemIdx) {
     const item = currentVodItems[itemIdx];
     if (!item) return;
 
-    if (item.content_type === "show" || item.content_type === "series" || activeVodCategory === "series") {
+    const isSeries = item.content_type === "show" || item.content_type === "series" || (activeVodCategory === "series" && item.content_type !== "movie");
+    if (isSeries) {
         openSeriesModal(item);
     } else {
         playVodItem(item);
@@ -1182,6 +1197,9 @@ function changeVodPage(delta) {
     loadVodCatalog(true);
 }
 
+// Global reference for active series seasons to avoid quote-escaping issues in inline HTML
+let currentSeriesSeasons = [];
+
 // Series Modal Controller
 async function openSeriesModal(item) {
     const modal = document.getElementById("series-modal");
@@ -1217,16 +1235,16 @@ async function openSeriesModal(item) {
             descEl.textContent = detail.description;
         }
 
-        const seasons = detail.seasons || [];
-        if (seasons.length > 0) {
-            seasonsBar.innerHTML = seasons.map((s, idx) => `
-                <button type="button" class="series-season-btn px-3 py-1 rounded-xl text-xs font-semibold ${idx === 0 ? 'bg-amber-500 text-slate-950 active' : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'}" onclick="selectSeriesSeason('${s.carouselId}', ${JSON.stringify(s.criteria).replace(/"/g, '&quot;')}, this)">
+        currentSeriesSeasons = detail.seasons || [];
+        if (currentSeriesSeasons.length > 0) {
+            seasonsBar.innerHTML = currentSeriesSeasons.map((s, idx) => `
+                <button type="button" class="series-season-btn px-3 py-1 rounded-xl text-xs font-semibold ${idx === 0 ? 'bg-amber-500 text-slate-950 active' : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'}" onclick="selectSeriesSeasonByIndex(${idx}, this)">
                     ${s.label}
                 </button>
             `).join("");
 
             // Load first season
-            selectSeriesSeason(seasons[0].carouselId, seasons[0].criteria, seasonsBar.children[0]);
+            selectSeriesSeasonByIndex(0, seasonsBar.children[0]);
         } else if (detail.episodes && detail.episodes.length > 0) {
             seasonsBar.innerHTML = '<span class="text-xs text-slate-400 font-semibold px-2">Všechny díly</span>';
             renderEpisodes(detail.episodes);
@@ -1240,7 +1258,10 @@ async function openSeriesModal(item) {
     }
 }
 
-async function selectSeriesSeason(carouselId, criteria, btnEl) {
+async function selectSeriesSeasonByIndex(idx, btnEl) {
+    const s = currentSeriesSeasons[idx];
+    if (!s) return;
+
     const epContainer = document.getElementById("series-episodes-container");
     if (epContainer) epContainer.innerHTML = '<div class="text-xs text-slate-400 py-4 text-center">Načítám díly série...</div>';
 
@@ -1254,10 +1275,10 @@ async function selectSeriesSeason(carouselId, criteria, btnEl) {
     }
 
     try {
-        const res = await fetch(`/api/provider/oneplay/vod/season?carousel_id=${encodeURIComponent(carouselId)}`, {
+        const res = await fetch(`/api/provider/oneplay/vod/season?carousel_id=${encodeURIComponent(s.carouselId)}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(criteria)
+            body: JSON.stringify(s.criteria)
         });
         if (!res.ok) throw new Error("Chyba při načítání dílů série.");
         const data = await res.json();
@@ -1265,6 +1286,61 @@ async function selectSeriesSeason(carouselId, criteria, btnEl) {
     } catch (err) {
         console.error("Failed to load season episodes:", err);
         if (epContainer) epContainer.innerHTML = '<div class="text-xs text-red-400 py-4 text-center">Chyba při načítání dílů této série.</div>';
+    }
+}
+
+async function testDrmPipeline() {
+    const resBox = document.getElementById("drm-status-result");
+    if (resBox) {
+        resBox.classList.remove("hidden");
+        resBox.innerHTML = '<div class="text-slate-400">Testuji spojení se Sune WV Cloud API a Jyxo AxDRM serverem...</div>';
+    }
+    showToast("Testuji DRM pipeline...", "info");
+    try {
+        const res = await fetch("/api/admin/drm/test");
+        const data = await res.json();
+        if (resBox) {
+            const isOk = data.overall_status === "ok";
+            const colorClass = isOk ? "text-emerald-400" : "text-amber-400";
+            resBox.innerHTML = `
+                <div class="font-bold ${colorClass}">Stav: ${data.message}</div>
+                <div class="text-slate-300">Sune WV API: ${data.wv_service_ok ? '✅ Online (' + data.wv_latency_ms + ' ms)' : '❌ Chyba (' + (data.wv_error || 'nedostupné') + ')'}</div>
+                <div class="text-slate-300">Jyxo Licence: ${data.license_service_ok ? '✅ Online (' + data.license_latency_ms + ' ms)' : '❌ Chyba (' + (data.license_error || 'nedostupné') + ')'}</div>
+            `;
+        }
+        showToast(data.message, data.overall_status === "ok" ? "success" : "warning");
+    } catch (err) {
+        if (resBox) resBox.innerHTML = `<div class="text-red-400 font-bold">Chyba při testování DRM: ${err.message}</div>`;
+        showToast("Chyba při testování DRM: " + err.message, "error");
+    }
+}
+
+async function checkDrmUpdates() {
+    const resBox = document.getElementById("drm-status-result");
+    if (resBox) {
+        resBox.classList.remove("hidden");
+        resBox.innerHTML = '<div class="text-slate-400">Kontroluji aktualizace v GitHub repozitáři autora...</div>';
+    }
+    showToast("Kontroluji aktualizace pluginu...", "info");
+    try {
+        const res = await fetch("/api/admin/drm/check-updates");
+        const data = await res.json();
+        if (resBox) {
+            if (data.status === "ok") {
+                resBox.innerHTML = `
+                    <div class="font-bold text-sky-400">Upstream plugin: ${data.repo}</div>
+                    <div class="text-slate-300">Poslední commit: <a href="${data.url}" target="_blank" class="text-amber-400 underline font-mono">${data.latest_sha}</a> (${data.latest_date ? data.latest_date.split('T')[0] : ''})</div>
+                    <div class="text-slate-400 text-[11px] truncate">${data.message}</div>
+                `;
+                showToast("Informace o upstream pluginu načteny.", "info");
+            } else {
+                resBox.innerHTML = `<div class="text-amber-400 font-bold">Chyba: ${data.message}</div>`;
+                showToast(data.message, "warning");
+            }
+        }
+    } catch (err) {
+        if (resBox) resBox.innerHTML = `<div class="text-red-400 font-bold">Chyba kontroly: ${err.message}</div>`;
+        showToast("Chyba kontroly aktualizací: " + err.message, "error");
     }
 }
 

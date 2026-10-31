@@ -9,9 +9,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install curl for container healthcheck and ca-certificates
+# Install curl for container healthcheck, ffmpeg for on-the-fly DRM remuxing, and ca-certificates
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates tzdata && \
+    apt-get install -y --no-install-recommends curl ca-certificates tzdata ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

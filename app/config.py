@@ -46,6 +46,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "oneplay_token_valid_to": 0,
     "oneplay_api_version": "v1.11",
     "oneplay_logged": False,
+    # Oneplay DRM Widevine & Upstream Configuration
+    "oneplay_wv_api_url": "https://wv.api.md.sune.app/v1/",
+    "oneplay_drm_license_url": "https://drm-proxy-widevine.cms.jyxo-tls.cz/AcquireLicense",
+    "oneplay_drm_upstream_repo": "sunecz/Media-Downloader-Default-Plugins",
 }
 
 
@@ -240,6 +244,19 @@ class ConfigManager:
     @property
     def is_oneplay_logged(self) -> bool:
         return bool(self.get("oneplay_logged")) and bool(self.get("oneplay_token"))
+
+    @property
+    def oneplay_wv_api_url(self) -> str:
+        url = self.get("oneplay_wv_api_url", "https://wv.api.md.sune.app/v1/")
+        return url.rstrip("/") + "/"
+
+    @property
+    def oneplay_drm_license_url(self) -> str:
+        return self.get("oneplay_drm_license_url", "https://drm-proxy-widevine.cms.jyxo-tls.cz/AcquireLicense")
+
+    @property
+    def oneplay_drm_upstream_repo(self) -> str:
+        return self.get("oneplay_drm_upstream_repo", "sunecz/Media-Downloader-Default-Plugins")
 
 
 # Global configuration instance

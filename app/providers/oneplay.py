@@ -915,6 +915,21 @@ class OneplayProvider(BaseProvider):
             "has_more": has_more or len(filtered_items) >= 24
         }
 
+    def _find_all_carousels(self, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Recursively traverses layout blocks to locate all carousels at any nesting level."""
+        found = []
+        for b in blocks:
+            if not isinstance(b, dict):
+                continue
+            for c in (b.get("carousels") or []):
+                if isinstance(c, dict):
+                    found.append(c)
+            # Nested layout blocks (TabBlock, SectionBlock, LayoutBlock, etc.)
+            nested = b.get("layout", {}).get("blocks") or b.get("blocks") or []
+            if nested:
+                found.extend(self._find_all_carousels(nested))
+        return found
+
     def get_series_detail(self, series_payload: Dict[str, Any]) -> Dict[str, Any]:
         """Fetches seasons and episodes for a TV series from Jyxo CMS layout."""
         if not self.ensure_authenticated():
@@ -936,67 +951,48 @@ class OneplayProvider(BaseProvider):
                 if not meta and b.get("schema") == "ContentHeaderBlock":
                     meta = b
 
-            # Locate TabBlock containing "Celé díly" or "Epizody"
-            episodes_block = None
-            for b in blocks:
-                if b.get("schema") == "TabBlock" and b.get("template") == "tabs":
-                    for tab in (b.get("tabs") or []):
-                        tab_name = str((tab.get("label") or {}).get("name") or "")
-                        if any(k in tab_name.lower() for k in ("celé díly", "epizody", "díly", "seasons")):
-                            if tab.get("isActive"):
-                                episodes_block = b
-                            else:
-                                tab_res = self.api.call_api("tab.display", data={"payload": {"tabId": tab.get("id")}}, token=token)
-                                episodes_block = tab_res.get("data") or tab_res.get("result", {}).get("data") or {}
-                            break
-                    if episodes_block:
-                        break
+            # Find all carousels recursively across all blocks and tabs
+            carousels = self._find_all_carousels(blocks)
 
             seasons = []
             episodes = []
 
-            # If episodes_block was found, look inside it
-            target_layout = (episodes_block.get("layout") or {}) if episodes_block else None
-            candidate_blocks = (target_layout.get("blocks") or [episodes_block]) if episodes_block else blocks
+            for carousel in carousels:
+                c_title = str(carousel.get("title") or "").lower()
+                # CRITICAL: Never treat "Podobné tituly" (similar movies/shows) or "Doporučujeme" as episodes!
+                if any(ignored in c_title for ignored in ("podobné", "doporuč", "další filmy", "mohlo by se", "podobne")):
+                    continue
 
-            for b in candidate_blocks:
-                carousels = b.get("carousels") or []
-                for carousel in carousels:
-                    c_title = str(carousel.get("title") or "").lower()
-                    # CRITICAL: Never treat "Podobné tituly" (similar movies/shows) or "Doporučujeme" as episodes!
-                    if any(ignored in c_title for ignored in ("podobné", "doporuč", "další filmy", "mohlo by se")):
-                        continue
-
-                    # Check for seasons criteria (template == "showSeason")
-                    criteria_list = carousel.get("criteria") or []
-                    has_season_criteria = False
-                    for crit in criteria_list:
-                        if crit.get("template") == "showSeason":
-                            has_season_criteria = True
-                            for item in (crit.get("items") or []):
-                                if item.get("label") and item.get("criteria"):
-                                    seasons.append({
-                                        "label": str(item["label"]),
-                                        "carouselId": carousel.get("id"),
-                                        "criteria": item["criteria"],
-                                    })
-
-                    # If this is an episode carousel (inside episodes_block, or has season criteria, or title is "Epizody"/"Díly")
-                    is_episode_carousel = episodes_block is not None or has_season_criteria or any(k in c_title for k in ("epizod", "díl"))
-                    if is_episode_carousel:
-                        for t in (carousel.get("tiles") or []):
-                            t_action = t.get("action") or {}
-                            if t_action.get("call") == "content.play" or "contentId" in (t_action.get("params") or {}).get("payload", {}):
-                                p = (t_action.get("params") or {}).get("payload") or {}
-                                episodes.append({
-                                    "id": str(p.get("contentId") or t.get("id")),
-                                    "title": t.get("title", ""),
-                                    "description": t.get("description") or t.get("subTitle") or "",
-                                    "duration": t.get("duration", 0),
-                                    "image": self._extract_image_url(t.get("image"), 480, 270),
-                                    "payload": p,
-                                    "is_drm": True,
+                # Check for seasons criteria (template == "showSeason")
+                criteria_list = carousel.get("criteria") or []
+                has_season_criteria = False
+                for crit in criteria_list:
+                    if crit.get("template") == "showSeason":
+                        has_season_criteria = True
+                        for item in (crit.get("items") or []):
+                            if item.get("label") and item.get("criteria"):
+                                seasons.append({
+                                    "label": str(item["label"]),
+                                    "carouselId": carousel.get("id"),
+                                    "criteria": item["criteria"],
                                 })
+
+                # If this is an episode carousel (has season criteria, or title mentions "epizod" / "díl")
+                is_episode_carousel = has_season_criteria or any(k in c_title for k in ("epizod", "díl", "episodes"))
+                if is_episode_carousel:
+                    for t in (carousel.get("tiles") or []):
+                        t_action = t.get("action") or {}
+                        if t_action.get("call") == "content.play" or "contentId" in (t_action.get("params") or {}).get("payload", {}):
+                            p = (t_action.get("params") or {}).get("payload") or {}
+                            episodes.append({
+                                "id": str(p.get("contentId") or t.get("id")),
+                                "title": t.get("title", ""),
+                                "description": t.get("description") or t.get("subTitle") or "",
+                                "duration": t.get("duration", 0),
+                                "image": self._extract_image_url(t.get("image"), 480, 270),
+                                "payload": p,
+                                "is_drm": True,
+                            })
 
             if seasons:
                 import re
@@ -1024,13 +1020,16 @@ class OneplayProvider(BaseProvider):
             logger.error(f"Error fetching series detail: {e}")
             return {}
 
-    def get_season_episodes(self, carousel_id: str, criteria: Any, sort_order: str = "ASC") -> List[Dict[str, Any]]:
+    def get_season_episodes(self, carousel_id: str, criteria: Any, sort_order: str = "DESC") -> List[Dict[str, Any]]:
         """Fetches episodes of a given series season."""
         if not self.ensure_authenticated():
             return []
         token = config.get("oneplay_token")
         try:
-            crit_val = criteria.get("criteria", criteria) if isinstance(criteria, dict) else criteria
+            crit_val = criteria
+            if isinstance(criteria, dict):
+                crit_val = criteria.get("filterCriterias") or criteria.get("criteria") or criteria
+
             c_post = {
                 "payload": {
                     "carouselId": carousel_id,
@@ -1040,8 +1039,29 @@ class OneplayProvider(BaseProvider):
             }
             res = self.api.call_api("carousel.display", data=c_post, token=token)
             data = res.get("data") or res.get("result", {}).get("data") or {}
-            carousel_obj = data.get("carousel") or data
-            tiles = carousel_obj.get("tiles") or []
+
+            tiles = []
+            if isinstance(data, dict):
+                if "carousel" in data and isinstance(data["carousel"], dict):
+                    tiles = data["carousel"].get("tiles") or []
+                if not tiles and "tiles" in data:
+                    tiles = data.get("tiles") or []
+                if not tiles:
+                    for c in (data.get("carousels") or []):
+                        if c.get("tiles"):
+                            tiles.extend(c["tiles"])
+
+            # Fallback to ASC sort order if DESC returned nothing
+            if not tiles and sort_order != "ASC":
+                c_post["payload"]["criteria"]["sortOption"] = "ASC"
+                res_asc = self.api.call_api("carousel.display", data=c_post, token=token)
+                data_asc = res_asc.get("data") or res_asc.get("result", {}).get("data") or {}
+                if isinstance(data_asc, dict):
+                    if "carousel" in data_asc and isinstance(data_asc["carousel"], dict):
+                        tiles = data_asc["carousel"].get("tiles") or []
+                    if not tiles and "tiles" in data_asc:
+                        tiles = data_asc.get("tiles") or []
+
             episodes = []
             for tile in tiles:
                 params = tile.get("action", {}).get("params") or {}
