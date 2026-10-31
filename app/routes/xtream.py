@@ -966,6 +966,7 @@ async def xtream_movie_stream(
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
             "Accept-Ranges": "none",
+            "Content-Length": str(total_bytes),
         }
         if duration_sec > 0:
             head_headers["X-Content-Duration"] = str(int(duration_sec))
@@ -1109,7 +1110,7 @@ async def xtream_vod_variant(
     session = await _get_or_create_vod_session(sid_int)
     base_url = get_effective_base_url(request)
 
-    seg_duration = 10.0
+    seg_duration = 6.0
     total_dur = session.get("duration", 0.0)
     if total_dur <= 0:
         item = _vod_cache_by_id.get(sid_int) or {}
@@ -1145,7 +1146,7 @@ async def xtream_vod_segment(
     stream_id: str,
     start_sec: int
 ):
-    """Generates an individual 10-second MPEG-TS segment with tagged audio languages and quality selection."""
+    """Generates an individual 6-second MPEG-TS segment aligned with DASH GOP boundaries and tagged audio languages."""
     if not validate_xtream_user(username, password):
         raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
 
@@ -1169,11 +1170,20 @@ async def xtream_vod_segment(
     quality = request.query_params.get("quality")
     mpd_path = session.get("quality_mpds", {}).get(quality) or session.get("mpd_path")
 
+    seg_duration = 6.0
+    total_dur = session.get("duration", 0.0)
+    cur_dur = seg_duration
+    if total_dur > 0:
+        cur_dur = min(seg_duration, max(0.1, total_dur - start_sec))
+
+    frames_count = max(1, int(round(cur_dur * 25)))
+    seek_t = start_sec + (1.5 if start_sec > 0 else 0)
+
     cmd = [
         ffmpeg_bin,
         "-hide_banner",
         "-loglevel", "warning",
-        "-ss", str(start_sec),
+        "-ss", str(seek_t),
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
         "-probesize", "10000000",
@@ -1195,7 +1205,7 @@ async def xtream_vod_segment(
         cmd.extend([f"-metadata:s:a:{idx}", f"language={lang}"])
 
     cmd.extend([
-        "-t", "10",
+        "-frames:v", str(frames_count),
         "-output_ts_offset", str(start_sec),
         "-f", "mpegts",
         "pipe:1"

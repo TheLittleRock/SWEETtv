@@ -7,6 +7,8 @@ import socket
 import threading
 import time
 import urllib.parse
+import base64
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import HTTPError
@@ -34,6 +36,13 @@ class OneplayAPI:
     def __init__(self):
         self.api_version = config.get("oneplay_api_version", "v1.11")
         self.ua = self.DEFAULT_UA
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": self.ua,
+            "Accept-Encoding": "gzip",
+            "Accept": "*/*",
+            "Content-Type": "application/json;charset=UTF-8",
+        })
 
     def discover_api_version(self) -> str:
         """Probes for the highest active API version supported by the backend."""
@@ -70,85 +79,67 @@ class OneplayAPI:
         token: Optional[str] = None,
         retry: bool = False
     ) -> Dict[str, Any]:
-        """Executes a hybrid REST + WebSocket call to Jyxo CMS."""
+        """Executes a fast REST call to Jyxo CMS with persistent connection pool."""
         url = f"{self.BASE_URL}{self.api_version}/{endpoint}"
         client_id = f"sweettv-{os.urandom(8).hex()}"
         request_id = f"req-{os.urandom(8).hex()}"
 
-        headers = {
-            "User-Agent": self.ua,
-            "Accept-Encoding": "gzip",
-            "Accept": "*/*",
-            "Content-Type": "application/json;charset=UTF-8",
-        }
+        headers = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        ws = None
+        payload = {
+            "deviceInfo": {
+                "deviceType": "web",
+                "appVersion": self.APP_VERSION,
+                "deviceManufacturer": "Unknown",
+                "deviceOs": "Linux",
+            },
+            "capabilities": {"async": "websockets"},
+            "context": {
+                "requestId": request_id,
+                "clientId": client_id,
+            },
+        }
+        if data:
+            payload.update(data)
+
         try:
-            # 1. Connect WebSocket
-            ws = websocket.create_connection(self.WS_URL.format(client_id), timeout=10)
-            ws_greeting = json.loads(ws.recv())
-            server_id = ws_greeting.get("data", {}).get("serverId") or "server-unknown"
+            resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+            if resp.status_code == 404 and not retry:
+                self.discover_api_version()
+                return self.call_api(endpoint, data=data, token=token, retry=True)
+            if resp.status_code != 200:
+                return {"result": {"status": "Error", "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}}
 
-            # 2. Build Post Body
-            payload = {
-                "deviceInfo": {
-                    "deviceType": "web",
-                    "appVersion": self.APP_VERSION,
-                    "deviceManufacturer": "Unknown",
-                    "deviceOs": "Linux",
-                },
-                "capabilities": {"async": "websockets"},
-                "context": {
-                    "requestId": request_id,
-                    "clientId": client_id,
-                    "sessionId": server_id,
-                    "serverId": server_id,
-                },
-            }
-            if data:
-                payload.update(data)
-
-            # 3. HTTP POST
-            body_bytes = json.dumps(payload).encode("utf-8")
-            req = Request(url=url, data=body_bytes, headers=headers)
-            with urlopen(req, timeout=15) as resp:
-                resp_bytes = resp.read()
-                if resp.getheader("Content-Encoding") == "gzip":
-                    resp_bytes = gzip.decompress(resp_bytes)
-
-            res_json = json.loads(resp_bytes.decode("utf-8")) if resp_bytes else {}
+            res_json = resp.json() if resp.text else {}
             res_status = res_json.get("result", {}).get("status")
 
-            # 4. Handle Async Response over WebSocket
+            # Handle rare Async Response over WebSocket if signaled by CMS
             if res_status == "OkAsync":
-                for _ in range(3):
-                    msg = ws.recv()
-                    if msg:
-                        parsed_msg = json.loads(msg)
-                        ws_resp = parsed_msg.get("response", {})
-                        if ws_resp.get("context", {}).get("requestId") == request_id:
-                            return ws_resp
+                ws = None
+                try:
+                    ws = websocket.create_connection(self.WS_URL.format(client_id), timeout=10)
+                    for _ in range(3):
+                        msg = ws.recv()
+                        if msg:
+                            parsed_msg = json.loads(msg)
+                            ws_resp = parsed_msg.get("response", {})
+                            if ws_resp.get("context", {}).get("requestId") == request_id:
+                                return ws_resp
+                finally:
+                    if ws:
+                        try:
+                            ws.close()
+                        except Exception:
+                            pass
                 return {"result": {"status": "Error", "message": "WebSocket response timeout"}}
 
             return res_json
 
-        except HTTPError as e:
-            logger.warning(f"Oneplay HTTP error calling {url}: {e}")
-            if e.code == 404 and not retry:
-                self.discover_api_version()
-                return self.call_api(endpoint, data=data, token=token, retry=True)
-            return {"result": {"status": "Error", "message": f"HTTP {e.code}: {e.reason}"}}
         except Exception as e:
             logger.error(f"Oneplay unexpected error calling {endpoint}: {e}")
             return {"result": {"status": "Error", "message": str(e)}}
-        finally:
-            if ws:
-                try:
-                    ws.close()
-                except Exception:
-                    pass
 
 
 class OneplayProvider(BaseProvider):
@@ -808,6 +799,61 @@ class OneplayProvider(BaseProvider):
             })
         return parsed
 
+    def _fetch_category_filtered_items(self, cat_code: str, token: str, max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches full catalog from Category 25 (Filtr) for a specific catalog code (e.g. oneplay-2, oneplay-4, oneplay-6).
+        Queries page 1 to extract pageCount, then fetches all remaining pages concurrently via ThreadPoolExecutor.
+        """
+        def _get_page(page_num: int) -> List[Dict[str, Any]]:
+            filter_obj = {"catalogue": "oneplay", "cat": cat_code, "source": "vod", "page": str(page_num)}
+            b64 = base64.b64encode(json.dumps(filter_obj).encode("utf-8")).decode("utf-8")
+            fc = f"filter:{b64}"
+            p = {
+                "payload": {
+                    "categoryId": "25",
+                    "criteria": {"filterCriterias": fc, "sortOption": "sorting-date-desc"},
+                }
+            }
+            res = self.api.call_api("page.category.display", data=p, token=token)
+            data = res.get("data") or res.get("result", {}).get("data") or {}
+            blocks = data.get("layout", {}).get("blocks") or []
+            carousels = self._find_all_carousels(blocks)
+            if carousels:
+                return carousels[0].get("tiles") or []
+            return []
+
+        # 1. Fetch page 1
+        filter_obj = {"catalogue": "oneplay", "cat": cat_code, "source": "vod", "page": "1"}
+        b64 = base64.b64encode(json.dumps(filter_obj).encode("utf-8")).decode("utf-8")
+        fc = f"filter:{b64}"
+        p = {
+            "payload": {
+                "categoryId": "25",
+                "criteria": {"filterCriterias": fc, "sortOption": "sorting-date-desc"},
+            }
+        }
+        res1 = self.api.call_api("page.category.display", data=p, token=token)
+        data1 = res1.get("data") or res1.get("result", {}).get("data") or {}
+        blocks1 = data1.get("layout", {}).get("blocks") or []
+        carousels1 = self._find_all_carousels(blocks1)
+        if not carousels1:
+            return []
+
+        c1 = carousels1[0]
+        tiles: List[Dict[str, Any]] = list(c1.get("tiles") or [])
+        page_count = int(c1.get("paging", {}).get("pageCount") or 1)
+        if max_pages and max_pages < page_count:
+            page_count = max_pages
+
+        if page_count > 1:
+            pages_to_fetch = list(range(2, page_count + 1))
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                for page_tiles in executor.map(_get_page, pages_to_fetch):
+                    if page_tiles:
+                        tiles.extend(page_tiles)
+
+        return self._parse_tiles(tiles)
+
     def get_vod_categories(self) -> List[Dict[str, Any]]:
         """Returns top-level VOD categories."""
         default_cats = [
@@ -871,16 +917,49 @@ class OneplayProvider(BaseProvider):
                 carousels = self._find_all_carousels(blocks)
                 for c in carousels:
                     items.extend(self._parse_tiles(c.get("tiles") or []))
+            elif all_pages:
+                # Fast multithreaded fetch of full catalog across all pages from Category 25 (Filtr)
+                if category == "movies":
+                    items.extend(self._fetch_category_filtered_items("oneplay-2", token))
+                    items.extend(self._fetch_category_filtered_items("oneplay-6", token))
+                elif category == "series":
+                    items.extend(self._fetch_category_filtered_items("oneplay-4", token))
+                    items.extend(self._fetch_category_filtered_items("oneplay-6", token))
+
+                # Also fetch homepage featured carousels for any banners/curated tiles
+                cat_id = "2" if category == "movies" else ("4" if category == "series" else ("8" if category == "recordings" else "1"))
+                res_cur = self.api.call_api("page.category.display", data={"payload": {"categoryId": str(cat_id)}}, token=token)
+                data_cur = res_cur.get("data") or res_cur.get("result", {}).get("data") or {}
+                blocks_cur = data_cur if isinstance(data_cur, list) else (data_cur.get("layout", {}).get("blocks") or [])
+                for c in self._find_all_carousels(blocks_cur):
+                    items.extend(self._parse_tiles(c.get("tiles") or []))
+            elif page > 1 and category in ("movies", "series"):
+                # Fetch specific page from Category 25
+                cat_code = "oneplay-2" if category == "movies" else "oneplay-4"
+                filter_obj = {"catalogue": "oneplay", "cat": cat_code, "source": "vod", "page": str(page)}
+                b64 = base64.b64encode(json.dumps(filter_obj).encode("utf-8")).decode("utf-8")
+                fc = f"filter:{b64}"
+                p = {
+                    "payload": {
+                        "categoryId": "25",
+                        "criteria": {"filterCriterias": fc, "sortOption": "sorting-date-desc"},
+                    }
+                }
+                res_p = self.api.call_api("page.category.display", data=p, token=token)
+                data_p = res_p.get("data") or res_p.get("result", {}).get("data") or {}
+                blocks_p = data_p.get("layout", {}).get("blocks") or []
+                carousels_p = self._find_all_carousels(blocks_p)
+                if carousels_p:
+                    c_p = carousels_p[0]
+                    items.extend(self._parse_tiles(c_p.get("tiles") or []))
+                    page_count = int(c_p.get("paging", {}).get("pageCount") or 1)
+                    has_more = page < page_count
             else:
                 target_cats = []
                 if category == "movies":
                     target_cats = ["2"]
-                    if all_pages:
-                        target_cats.append("6")  # Include kids movies for full catalog indexing
                 elif category == "series":
                     target_cats = ["4"]
-                    if all_pages:
-                        target_cats.append("6")  # Include kids series for full catalog indexing
                 elif category == "recordings":
                     target_cats = ["8"]
                 elif category in ("all", ""):
@@ -898,42 +977,7 @@ class OneplayProvider(BaseProvider):
                         c_tiles = c.get("tiles") or []
                         items.extend(self._parse_tiles(c_tiles))
                         paging = c.get("paging") or {}
-
-                        # If all_pages is requested (e.g. for Xtream catalog indexing), paginate carousels
-                        if all_pages and paging.get("criteria"):
-                            pos = len(c_tiles) + 1
-                            while pos <= 2000:
-                                c_post = {
-                                    "payload": {
-                                        "criteria": paging.get("criteria"),
-                                        "carouselId": c.get("id"),
-                                        "paging": {"count": 24, "position": pos}
-                                    }
-                                }
-                                c_res = self.api.call_api("carousel.display", data=c_post, token=token)
-                                c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
-                                c_more_tiles = c_data.get("tiles") or []
-                                if not c_more_tiles:
-                                    break
-                                items.extend(self._parse_tiles(c_more_tiles))
-                                if not c_data.get("paging", {}).get("next") or len(c_more_tiles) < 24:
-                                    break
-                                pos += len(c_more_tiles)
-                        elif page > 1 and paging.get("criteria"):
-                            c_post = {
-                                "payload": {
-                                    "criteria": paging.get("criteria"),
-                                    "carouselId": c.get("id"),
-                                    "paging": {"count": 24, "position": (page - 1) * 24 + 1}
-                                }
-                            }
-                            c_res = self.api.call_api("carousel.display", data=c_post, token=token)
-                            c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
-                            c_more_tiles = c_data.get("tiles") or []
-                            items.extend(self._parse_tiles(c_more_tiles))
-                            has_more = bool(c_data.get("paging", {}).get("next"))
-                        else:
-                            has_more = bool(paging.get("next")) or has_more
+                        has_more = bool(paging.get("next")) or has_more
 
         except Exception as e:
             logger.error(f"Error fetching Oneplay VOD items: {e}")
@@ -1238,6 +1282,25 @@ class OneplayProvider(BaseProvider):
                 post["authorization"] = [{"schema": "PinRequestAuthorization", "pin": str(pin), "type": "parental"}]
 
             res = self.api.call_api("content.play", data=post, token=token)
+
+            # Auto-handle ProfileSelectionNeeded (error 4104) if prompted by CMS
+            err_code = str(res.get("result", {}).get("code") or res.get("code") or "")
+            if err_code == "4104" or "ProfileSelectionNeeded" in str(res):
+                logger.info("Oneplay returned ProfileSelectionNeeded (4104), auto-selecting profile...")
+                profiles_res = self.api.call_api("user.profiles.display", data={"payload": {"mode": "change"}}, token=token)
+                p_data = profiles_res.get("data") or profiles_res.get("result", {}).get("data") or {}
+                profiles = (p_data.get("availableProfiles") or {}).get("profiles") or []
+                if profiles:
+                    prof_id = profiles[0].get("profile", {}).get("id")
+                    if prof_id:
+                        sel_res = self.api.call_api("user.profile.select", data={"payload": {"profileId": prof_id}}, token=token)
+                        sel_data = sel_res.get("data") or sel_res.get("result", {}).get("data") or {}
+                        new_tok = sel_data.get("bearerToken")
+                        if new_tok:
+                            token = new_tok
+                            config.update({"oneplay_token": new_tok})
+                            res = self.api.call_api("content.play", data=post, token=token)
+
             data = res.get("data") or res.get("result", {}).get("data") or {}
             assets = data.get("media", {}).get("stream", {}).get("assets") or []
 

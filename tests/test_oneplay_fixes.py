@@ -194,3 +194,64 @@ def test_vod_categories_correct_mapping():
     assert cat_by_id["series"]["categoryId"] == "4"
     assert cat_by_id["recordings"]["categoryId"] == "8"
     assert cat_by_id["all"]["categoryId"] == "1"
+
+
+def test_fetch_category_filtered_items_pagination():
+    provider = OneplayProvider()
+    provider.ensure_authenticated = MagicMock(return_value=True)
+
+    # Mock page 1 and page 2 responses for Category 25
+    def mock_call_api(endpoint, data=None, token=None, retry=False):
+        criteria = (data or {}).get("payload", {}).get("criteria", {}).get("filterCriterias", "")
+        import base64, json
+        # Decode base64 filter
+        b64 = criteria.replace("filter:", "")
+        filter_obj = json.loads(base64.b64decode(b64).decode())
+        page = filter_obj.get("page", "1")
+        if page == "1":
+            return {
+                "status": "success",
+                "data": {
+                    "layout": {
+                        "blocks": [
+                            {
+                                "carousels": [
+                                    {
+                                        "tiles": [
+                                            {"id": "m1", "title": "Spider-Man: Homecoming", "action": {"params": {"payload": {"contentId": "movie.10999"}}}}
+                                        ],
+                                        "paging": {"pageCount": 2, "next": True}
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        else:
+            return {
+                "status": "success",
+                "data": {
+                    "layout": {
+                        "blocks": [
+                            {
+                                "carousels": [
+                                    {
+                                        "tiles": [
+                                            {"id": "m2", "title": "Spider-Man: Bez domova", "action": {"params": {"payload": {"contentId": "movie.11037"}}}}
+                                        ],
+                                        "paging": {"pageCount": 2, "next": False}
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+
+    provider.api.call_api = mock_call_api
+    items = provider._fetch_category_filtered_items("oneplay-2", "fake_token")
+    assert len(items) == 2
+    titles = [it["title"] for it in items]
+    assert "Spider-Man: Homecoming" in titles
+    assert "Spider-Man: Bez domova" in titles

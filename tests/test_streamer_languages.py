@@ -205,7 +205,14 @@ def test_xtream_movie_m3u8_hls_playlist_generation(monkeypatch):
     assert "#EXT-X-PLAYLIST-TYPE:VOD" in v_text
     assert "#EXT-X-ENDLIST" in v_text
     assert "/vod_segment/sweettv/sweet/39998/0.ts?quality=1080p" in v_text
-    assert "/vod_segment/sweettv/sweet/39998/50.ts?quality=1080p" in v_text
+    assert "/vod_segment/sweettv/sweet/39998/54.ts?quality=1080p" in v_text
+    assert "#EXTINF:6.000" in v_text
+
+    # 3. Test HEAD request on movie stream returns valid Content-Length > 0
+    resp_head = client.head("/movie/sweettv/sweet/39998.ts")
+    assert resp_head.status_code == 200
+    assert "Content-Length" in resp_head.headers
+    assert int(resp_head.headers["Content-Length"]) > 0
 
 
 def test_series_episode_filtering_and_formatting():
