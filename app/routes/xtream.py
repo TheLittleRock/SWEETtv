@@ -962,8 +962,9 @@ async def xtream_movie_stream(
     )
 
 
-@router.get("/vod_segment/{username}/{password}/{stream_id}/{start_sec}.ts")
+@router.api_route("/vod_segment/{username}/{password}/{stream_id}/{start_sec}.ts", methods=["GET", "HEAD"])
 async def xtream_vod_segment(
+    request: Request,
     username: str,
     password: str,
     stream_id: str,
@@ -972,6 +973,13 @@ async def xtream_vod_segment(
     """Generates an individual 10-second MPEG-TS segment for HLS VOD playback."""
     if not validate_xtream_user(username, password):
         raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
+    if request.method == "HEAD":
+        return Response(
+            status_code=200,
+            media_type="video/mp2t",
+            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"}
+        )
 
     try:
         sid_int = int(clean_id(stream_id))
