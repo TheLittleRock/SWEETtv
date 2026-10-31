@@ -1,7 +1,8 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -21,6 +22,7 @@ router = APIRouter(tags=["Xtream Codes API"])
 
 _vod_cache_by_id: Dict[int, Dict[str, Any]] = {}
 _series_cache_by_id: Dict[int, Dict[str, Any]] = {}
+_series_info_cache: Dict[int, Tuple[float, Dict[str, Any]]] = {}
 
 
 def validate_xtream_user(username: Optional[str], password: Optional[str]) -> bool:
@@ -265,7 +267,7 @@ async def player_api(
             if cat_filter == "3001":
                 items = provider_manager.oneplay.get_recordings()
             else:
-                res = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+                res = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
                 items = res.get("items") or []
 
             idx = 0
@@ -286,7 +288,7 @@ async def player_api(
                     "rating_5based": 3.75,
                     "added": "1600000000",
                     "category_id": cat_filter or "3000",
-                    "container_extension": "m3u8",
+                    "container_extension": "ts",
                     "custom_sid": "",
                     "direct_source": ""
                 })
@@ -303,7 +305,7 @@ async def player_api(
         item = _vod_cache_by_id.get(vid)
         if not item and config.oneplay_enabled and config.is_oneplay_logged:
             try:
-                res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+                res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
                 idx = 0
                 for it in (res_m.get("items") or []):
                     idx += 1
@@ -342,7 +344,7 @@ async def player_api(
             "movie_data": {
                 "stream_id": vid,
                 "name": name,
-                "container_extension": "m3u8"
+                "container_extension": "ts"
             }
         })
 
@@ -357,7 +359,7 @@ async def player_api(
         series_out = []
         if config.oneplay_enabled and config.is_oneplay_logged:
             try:
-                res = provider_manager.oneplay.get_vod_items(category="series", page=1)
+                res = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
                 items = res.get("items") or []
                 idx = 0
                 for it in items:
@@ -391,10 +393,16 @@ async def player_api(
         except Exception:
             sid = 0
 
+        # Check in-memory series info cache (1h TTL) to avoid long re-fetches and client timeouts
+        now_ts = time.time()
+        cached_info = _series_info_cache.get(sid)
+        if cached_info and (now_ts - cached_info[0]) < 3600:
+            return JSONResponse(content=cached_info[1])
+
         s_item = _series_cache_by_id.get(sid)
         if (not s_item or not s_item.get("payload")) and config.oneplay_enabled and config.is_oneplay_logged:
             try:
-                res = provider_manager.oneplay.get_vod_items(category="series", page=1)
+                res = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
                 idx = 0
                 for it in (res.get("items") or []):
                     idx += 1
@@ -417,28 +425,28 @@ async def player_api(
 
         seasons = detail.get("seasons") or []
         if seasons:
-            s_num = 0
-            for season in seasons:
-                s_num += 1
+            def _fetch_season_task(item_tuple):
+                s_num, season = item_tuple
                 s_key = str(s_num)
-                seasons_meta.append({
+                meta = {
                     "season_number": s_num,
                     "name": season.get("label", f"{s_num}. série"),
                     "episode_count": 0,
                     "id": s_num,
                     "air_date": "2024"
-                })
-                # Fetch season episodes
+                }
                 try:
                     eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
                 except Exception as e:
                     logger.error(f"Error fetching season episodes in get_series_info for {season}: {e}")
                     eps = []
+                meta["episode_count"] = len(eps)
                 ep_list = []
                 ep_num = 0
                 for ep in eps:
                     ep_num += 1
-                    ep_sid = (sid * 100) + ep_num
+                    # Globally unique episode ID: sid * 1000000 + season * 1000 + ep_num
+                    ep_sid = (sid * 1000000) + (s_num * 1000) + ep_num
                     _vod_cache_by_id[ep_sid] = ep
                     dur_ep = ep.get("duration")
                     dur_ep_int = int(dur_ep) if dur_ep is not None and str(dur_ep).isdigit() else 3000
@@ -446,7 +454,7 @@ async def player_api(
                         "id": ep_sid,
                         "episode_num": ep_num,
                         "title": ep.get("title", f"Díl {ep_num}"),
-                        "container_extension": "m3u8",
+                        "container_extension": "ts",
                         "info": {
                             "name": ep.get("title", ""),
                             "plot": ep.get("description", ""),
@@ -454,7 +462,19 @@ async def player_api(
                             "movie_image": ep.get("image", "")
                         }
                     })
+                return s_num, meta, s_key, ep_list
+
+            # Fetch seasons concurrently with ThreadPoolExecutor
+            indexed_seasons = list(enumerate(seasons, start=1))
+            with ThreadPoolExecutor(max_workers=min(8, len(indexed_seasons))) as executor:
+                results = list(executor.map(_fetch_season_task, indexed_seasons))
+
+            # Sort by season number
+            results.sort(key=lambda r: r[0])
+            for _, meta, s_key, ep_list in results:
+                seasons_meta.append(meta)
                 episodes_map[s_key] = ep_list
+
         elif detail.get("episodes"):
             # Direct episodes
             seasons_meta.append({"season_number": 1, "name": "1. série", "episode_count": len(detail["episodes"]), "id": 1, "air_date": "2024"})
@@ -462,7 +482,7 @@ async def player_api(
             ep_num = 0
             for ep in detail["episodes"]:
                 ep_num += 1
-                ep_sid = (sid * 100) + ep_num
+                ep_sid = (sid * 1000000) + 1000 + ep_num
                 _vod_cache_by_id[ep_sid] = ep
                 dur_ep = ep.get("duration")
                 dur_ep_int = int(dur_ep) if dur_ep is not None and str(dur_ep).isdigit() else 3000
@@ -470,7 +490,7 @@ async def player_api(
                     "id": ep_sid,
                     "episode_num": ep_num,
                     "title": ep.get("title", f"Díl {ep_num}"),
-                    "container_extension": "m3u8",
+                    "container_extension": "ts",
                     "info": {
                         "name": ep.get("title", ""),
                         "plot": ep.get("description", ""),
@@ -480,7 +500,7 @@ async def player_api(
                 })
             episodes_map["1"] = ep_list
 
-        return JSONResponse(content={
+        result_payload = {
             "seasons": seasons_meta,
             "info": {
                 "name": detail.get("title", s_item.get("title")),
@@ -492,7 +512,9 @@ async def player_api(
                 "rating_5based": 4.0
             },
             "episodes": episodes_map
-        })
+        }
+        _series_info_cache[sid] = (now_ts, result_payload)
+        return JSONResponse(content=result_payload)
 
     return JSONResponse(content={"message": f"Action {action} not handled", "status": "OK"})
 
@@ -647,17 +669,17 @@ def xtream_timeshift_stream(
 # XTREAM CODES VOD & SERIES PLAYBACK ENDPOINTS
 # =========================================================================
 
-@router.get("/movie/{username}/{password}/{stream_id}.m3u8")
-@router.get("/movie/{username}/{password}/{stream_id}.ts")
-@router.get("/movie/{username}/{password}/{stream_id}.mp4")
-@router.get("/movie/{username}/{password}/{stream_id}")
+@router.api_route("/movie/{username}/{password}/{stream_id}.m3u8", methods=["GET", "HEAD"])
+@router.api_route("/movie/{username}/{password}/{stream_id}.ts", methods=["GET", "HEAD"])
+@router.api_route("/movie/{username}/{password}/{stream_id}.mp4", methods=["GET", "HEAD"])
+@router.api_route("/movie/{username}/{password}/{stream_id}", methods=["GET", "HEAD"])
 async def xtream_movie_stream(
     request: Request,
     username: str,
     password: str,
     stream_id: str
 ):
-    """Playback endpoint for Xtream Codes VOD movies and cloud recordings."""
+    """Playback endpoint for Xtream Codes VOD movies, series episodes, and recordings."""
     if not validate_xtream_user(username, password):
         raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
 
@@ -666,17 +688,35 @@ async def xtream_movie_stream(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid stream ID.")
 
+    # Fast probe response for HEAD requests from IPTV players (e.g. TiviMate, VLC)
+    if request.method == "HEAD":
+        return Response(
+            status_code=200,
+            media_type="video/mp2t",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Content-Disposition": f'inline; filename="vod_{sid_int}.ts"'
+            }
+        )
+
     item = _vod_cache_by_id.get(sid_int)
     if not item or not item.get("payload"):
         # Auto-reload VOD cache if expired or missing
         if config.oneplay_enabled and config.is_oneplay_logged:
             try:
-                # Check if this is a series episode (sid_int >= 400000)
-                if sid_int >= 400000:
+                # Check if this is a series episode (sid_int >= 40000000 or legacy sid_int >= 400000)
+                if sid_int >= 40000000:
+                    series_base_id = sid_int // 1000000
+                elif sid_int >= 400000:
                     series_base_id = sid_int // 100
+                else:
+                    series_base_id = None
+
+                if series_base_id:
                     s_item = _series_cache_by_id.get(series_base_id)
                     if not s_item or not s_item.get("payload"):
-                        res_s = provider_manager.oneplay.get_vod_items(category="series", page=1)
+                        res_s = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
                         idx = 0
                         for it in (res_s.get("items") or []):
                             idx += 1
@@ -684,21 +724,25 @@ async def xtream_movie_stream(
                         s_item = _series_cache_by_id.get(series_base_id)
                     if s_item and s_item.get("payload"):
                         detail = provider_manager.oneplay.get_series_detail(s_item["payload"])
+                        s_num = 0
                         for season in (detail.get("seasons") or []):
+                            s_num += 1
                             eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
                             ep_idx = 0
                             for ep in eps:
                                 ep_idx += 1
-                                _vod_cache_by_id[(series_base_id * 100) + ep_idx] = ep
+                                _vod_cache_by_id[(series_base_id * 1000000) + (s_num * 1000) + ep_idx] = ep
+                                _vod_cache_by_id[(series_base_id * 100) + ep_idx] = ep  # Legacy compatibility
                         for ep_idx, ep in enumerate(detail.get("episodes") or []):
+                            _vod_cache_by_id[(series_base_id * 1000000) + 1000 + (ep_idx + 1)] = ep
                             _vod_cache_by_id[(series_base_id * 100) + (ep_idx + 1)] = ep
                 else:
-                    res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+                    res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
                     idx = 0
                     for it in (res_m.get("items") or []):
                         idx += 1
                         _vod_cache_by_id[30000 + idx] = it
-                    res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
+                    res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1, all_pages=True)
                     idx = 0
                     for it in (res_r.get("items") or []):
                         idx += 1
@@ -756,7 +800,7 @@ async def xtream_movie_stream(
             except Exception as e:
                 logger.error(f"Error acquiring DRM keys for VOD stream {sid_int}: {e}")
 
-        # Stream clear MPEG-TS directly via FFmpeg
+        # Stream clear MPEG-TS directly via FFmpeg with token-propagated MPD
         headers_dict = {
             "User-Agent": provider_manager.oneplay.api.ua,
             "Referer": "https://www.oneplay.cz/"
@@ -779,10 +823,10 @@ async def xtream_movie_stream(
     return RedirectResponse(url=stream_url, status_code=302)
 
 
-@router.get("/series/{username}/{password}/{stream_id}.m3u8")
-@router.get("/series/{username}/{password}/{stream_id}.ts")
-@router.get("/series/{username}/{password}/{stream_id}.mp4")
-@router.get("/series/{username}/{password}/{stream_id}")
+@router.api_route("/series/{username}/{password}/{stream_id}.m3u8", methods=["GET", "HEAD"])
+@router.api_route("/series/{username}/{password}/{stream_id}.ts", methods=["GET", "HEAD"])
+@router.api_route("/series/{username}/{password}/{stream_id}.mp4", methods=["GET", "HEAD"])
+@router.api_route("/series/{username}/{password}/{stream_id}", methods=["GET", "HEAD"])
 async def xtream_series_stream(
     request: Request,
     username: str,

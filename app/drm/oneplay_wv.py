@@ -314,3 +314,4 @@ class OneplayDRMManager:
 
 # Global DRM manager instance
 drm_manager = OneplayDRMManager()
+

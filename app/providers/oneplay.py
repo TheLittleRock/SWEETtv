@@ -173,8 +173,13 @@ class OneplayProvider(BaseProvider):
 
     def is_authenticated(self) -> bool:
         token = config.get("oneplay_token")
+        if not token:
+            return False
         valid_to = int(config.get("oneplay_token_valid_to") or 0)
-        return bool(token and valid_to > int(time.time()))
+        # If valid_to is 0 or unset, token remains active while oneplay_logged is true
+        if valid_to == 0:
+            return bool(config.get("oneplay_logged"))
+        return valid_to > int(time.time())
 
     def ensure_authenticated(self) -> bool:
         """Ensures an active session exists; re-authenticates if expired."""
@@ -185,7 +190,9 @@ class OneplayProvider(BaseProvider):
             username = config.get("oneplay_username")
             password = config.get("oneplay_password")
             if not username or not password:
-                return False
+                # If credentials not configured, preserve active session if token exists
+                token = config.get("oneplay_token")
+                return bool(token and config.get("oneplay_logged"))
 
             logger.info(f"Authenticating with Oneplay as {username}...")
             # Step 1: Login
@@ -298,13 +305,25 @@ class OneplayProvider(BaseProvider):
         if not img_obj:
             return ""
         if isinstance(img_obj, dict):
-            url = img_obj.get("image") or img_obj.get("src") or img_obj.get("url") or img_obj.get("poster") or ""
+            url = (
+                img_obj.get("urlTemplate") or
+                img_obj.get("image") or
+                img_obj.get("src") or
+                img_obj.get("url") or
+                img_obj.get("poster") or
+                ""
+            )
         elif isinstance(img_obj, str):
             url = img_obj
         else:
             url = ""
-        if url and "{WIDTH}" in url:
-            return url.replace("{WIDTH}", str(width)).replace("{HEIGHT}", str(height))
+        if url:
+            url = (
+                url.replace("{WIDTH}", str(width))
+                   .replace("{HEIGHT}", str(height))
+                   .replace("{w}", str(width))
+                   .replace("{h}", str(height))
+            )
         return url
 
     def get_channels(self, force_refresh: bool = False, need_epg: bool = False) -> List[Dict[str, Any]]:
@@ -828,7 +847,8 @@ class OneplayProvider(BaseProvider):
         self,
         category: str = "all",
         page: int = 1,
-        query: Optional[str] = None
+        query: Optional[str] = None,
+        all_pages: bool = False
     ) -> Dict[str, Any]:
         """Fetches catalog items for a category or search query with pagination."""
         if not self.ensure_authenticated():
@@ -844,14 +864,9 @@ class OneplayProvider(BaseProvider):
                 data = res.get("data") or res.get("result", {}).get("data") or {}
                 layout = data.get("layout") or {}
                 blocks = layout.get("blocks") or []
-                for b in blocks:
-                    if b.get("schema") == "TabBlock":
-                        for lb in (b.get("layout", {}).get("blocks") or []):
-                            for c in (lb.get("carousels") or []):
-                                items.extend(self._parse_tiles(c.get("tiles") or []))
-                    elif b.get("schema") == "CarouselBlock":
-                        for c in (b.get("carousels") or []):
-                            items.extend(self._parse_tiles(c.get("tiles") or []))
+                carousels = self._find_all_carousels(blocks)
+                for c in carousels:
+                    items.extend(self._parse_tiles(c.get("tiles") or []))
             else:
                 cat_id = "2" if category == "movies" else ("1" if category == "series" else ("8" if category == "recordings" else category))
                 if cat_id in ("all", ""):
@@ -861,31 +876,47 @@ class OneplayProvider(BaseProvider):
                 data = res.get("data") or res.get("result", {}).get("data") or []
                 blocks = data if isinstance(data, list) else (data.get("layout", {}).get("blocks") or [])
 
-                for b in blocks:
-                    if b.get("schema") == "CarouselBlock":
-                        carousels = b.get("carousels") or []
-                        for c in carousels:
-                            paging = c.get("paging") or {}
-                            if page > 1 and paging.get("criteria"):
-                                c_post = {
-                                    "payload": {
-                                        "criteria": paging.get("criteria"),
-                                        "carouselId": c.get("id"),
-                                        "paging": {"count": 24, "position": (page - 1) * 24 + 1}
-                                    }
+                all_carousels = self._find_all_carousels(blocks)
+                for c in all_carousels:
+                    c_tiles = c.get("tiles") or []
+                    items.extend(self._parse_tiles(c_tiles))
+                    paging = c.get("paging") or {}
+
+                    # If all_pages is requested (e.g. for Xtream catalog indexing), paginate carousels
+                    if all_pages and paging.get("criteria"):
+                        pos = len(c_tiles) + 1
+                        while pos <= 300:
+                            c_post = {
+                                "payload": {
+                                    "criteria": paging.get("criteria"),
+                                    "carouselId": c.get("id"),
+                                    "paging": {"count": 24, "position": pos}
                                 }
-                                c_res = self.api.call_api("carousel.display", data=c_post, token=token)
-                                c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
-                                items.extend(self._parse_tiles(c_data.get("tiles") or []))
-                                has_more = bool(c_data.get("paging", {}).get("next"))
+                            }
+                            c_res = self.api.call_api("carousel.display", data=c_post, token=token)
+                            c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
+                            c_more_tiles = c_data.get("tiles") or []
+                            if not c_more_tiles:
                                 break
-                            else:
-                                items.extend(self._parse_tiles(c.get("tiles") or []))
-                                has_more = bool(paging.get("next"))
-                    elif b.get("schema") == "TabBlock":
-                        for lb in (b.get("layout", {}).get("blocks") or []):
-                            for c in (lb.get("carousels") or []):
-                                items.extend(self._parse_tiles(c.get("tiles") or []))
+                            items.extend(self._parse_tiles(c_more_tiles))
+                            if not c_data.get("paging", {}).get("next") or len(c_more_tiles) < 24:
+                                break
+                            pos += len(c_more_tiles)
+                    elif page > 1 and paging.get("criteria"):
+                        c_post = {
+                            "payload": {
+                                "criteria": paging.get("criteria"),
+                                "carouselId": c.get("id"),
+                                "paging": {"count": 24, "position": (page - 1) * 24 + 1}
+                            }
+                        }
+                        c_res = self.api.call_api("carousel.display", data=c_post, token=token)
+                        c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
+                        c_more_tiles = c_data.get("tiles") or []
+                        items.extend(self._parse_tiles(c_more_tiles))
+                        has_more = bool(c_data.get("paging", {}).get("next"))
+                    else:
+                        has_more = bool(paging.get("next")) or has_more
 
         except Exception as e:
             logger.error(f"Error fetching Oneplay VOD items: {e}")
@@ -943,68 +974,78 @@ class OneplayProvider(BaseProvider):
             blocks = layout.get("blocks") or []
 
             show_play_payload = None
+            is_movie = False
             for b in blocks:
                 if b.get("schema") == "ContentHeaderBlock":
                     act = b.get("mainAction", {}).get("action") or {}
                     if act.get("call") == "content.play":
                         show_play_payload = act.get("params", {}).get("payload")
+                    c_type = str(b.get("contentType") or b.get("tracking", {}).get("type") or "").lower()
+                    if c_type in ("movie", "film"):
+                        is_movie = True
                 if not meta and b.get("schema") == "ContentHeaderBlock":
                     meta = b
 
-            # Find all carousels recursively across all blocks and tabs
-            carousels = self._find_all_carousels(blocks)
+            raw_type = str(data.get("metadata", {}).get("contentType") or data.get("tracking", {}).get("type") or "").lower()
+            if raw_type in ("movie", "film"):
+                is_movie = True
 
             seasons = []
             episodes = []
 
-            for carousel in carousels:
-                c_title = str(carousel.get("title") or "").lower()
-                # CRITICAL: Never treat "Podobné tituly" (similar movies/shows) or "Doporučujeme" as episodes!
-                if any(ignored in c_title for ignored in ("podobné", "doporuč", "další filmy", "mohlo by se", "podobne")):
-                    continue
+            # If this is a movie, it does not have seasons or episodes (avoid treating franchise/similar movies as episodes)
+            if not is_movie:
+                # Find all carousels recursively across all blocks and tabs
+                carousels = self._find_all_carousels(blocks)
 
-                # Check for seasons criteria (template == "showSeason")
-                criteria_list = carousel.get("criteria") or []
-                has_season_criteria = False
-                for crit in criteria_list:
-                    if crit.get("template") == "showSeason":
-                        has_season_criteria = True
-                        for item in (crit.get("items") or []):
-                            if item.get("label") and item.get("criteria"):
-                                seasons.append({
-                                    "label": str(item["label"]),
-                                    "carouselId": carousel.get("id"),
-                                    "criteria": item["criteria"],
+                for carousel in carousels:
+                    c_title = str(carousel.get("title") or "").lower()
+                    # CRITICAL: Never treat recommendations, franchise collections or similar movies as episodes!
+                    if any(ignored in c_title for ignored in ("podobné", "doporuč", "další filmy", "mohlo by se", "podobne", "kolekce", "související", "ze série")):
+                        continue
+
+                    # Check for seasons criteria (template == "showSeason")
+                    criteria_list = carousel.get("criteria") or []
+                    has_season_criteria = False
+                    for crit in criteria_list:
+                        if crit.get("template") == "showSeason":
+                            has_season_criteria = True
+                            for item in (crit.get("items") or []):
+                                if item.get("label") and item.get("criteria"):
+                                    seasons.append({
+                                        "label": str(item["label"]),
+                                        "carouselId": carousel.get("id"),
+                                        "criteria": item["criteria"],
+                                    })
+
+                    # If this is an episode carousel (has season criteria, or title specifically mentions episodes)
+                    is_episode_carousel = has_season_criteria or any(k in c_title for k in ("epizod", "díl", "episodes"))
+                    if is_episode_carousel and not seasons:
+                        for t in (carousel.get("tiles") or []):
+                            t_action = t.get("action") or {}
+                            if t_action.get("call") == "content.play" or "contentId" in (t_action.get("params") or {}).get("payload", {}):
+                                p = (t_action.get("params") or {}).get("payload") or {}
+                                episodes.append({
+                                    "id": str(p.get("contentId") or t.get("id")),
+                                    "title": t.get("title", ""),
+                                    "description": t.get("description") or t.get("subTitle") or "",
+                                    "duration": t.get("duration", 0),
+                                    "image": self._extract_image_url(t.get("image"), 480, 270),
+                                    "payload": p,
+                                    "is_drm": True,
                                 })
 
-                # If this is an episode carousel (has season criteria, or title mentions "epizod" / "díl")
-                is_episode_carousel = has_season_criteria or any(k in c_title for k in ("epizod", "díl", "episodes"))
-                if is_episode_carousel:
-                    for t in (carousel.get("tiles") or []):
-                        t_action = t.get("action") or {}
-                        if t_action.get("call") == "content.play" or "contentId" in (t_action.get("params") or {}).get("payload", {}):
-                            p = (t_action.get("params") or {}).get("payload") or {}
-                            episodes.append({
-                                "id": str(p.get("contentId") or t.get("id")),
-                                "title": t.get("title", ""),
-                                "description": t.get("description") or t.get("subTitle") or "",
-                                "duration": t.get("duration", 0),
-                                "image": self._extract_image_url(t.get("image"), 480, 270),
-                                "payload": p,
-                                "is_drm": True,
-                            })
+                if seasons:
+                    import re
+                    def _season_sort_key(s):
+                        lbl = str(s.get("label", ""))
+                        nums = re.findall(r"\d+", lbl)
+                        return int(nums[0]) if nums else 999
+                    seasons.sort(key=_season_sort_key)
 
-            if seasons:
-                import re
-                def _season_sort_key(s):
-                    lbl = str(s.get("label", ""))
-                    nums = re.findall(r"\d+", lbl)
-                    return int(nums[0]) if nums else 999
-                seasons.sort(key=_season_sort_key)
-
-                # Pre-fetch first season episodes if episodes list is empty
-                if not episodes and seasons[0].get("carouselId") and seasons[0].get("criteria"):
-                    episodes = self.get_season_episodes(seasons[0]["carouselId"], seasons[0]["criteria"])
+                    # Pre-fetch first season episodes if episodes list is empty
+                    if not episodes and seasons[0].get("carouselId") and seasons[0].get("criteria"):
+                        episodes = self.get_season_episodes(seasons[0]["carouselId"], seasons[0]["criteria"])
 
             poster = self._extract_image_url(meta.get("image") or data.get("image") or data.get("backdrop"), 800, 450)
 
@@ -1021,7 +1062,10 @@ class OneplayProvider(BaseProvider):
             return {}
 
     def get_season_episodes(self, carousel_id: str, criteria: Any, sort_order: str = "DESC") -> List[Dict[str, Any]]:
-        """Fetches episodes of a given series season."""
+        """
+        Fetches all episodes of a given series season via pagination loop.
+        Reverses the episode list to chronological ascending order (oldest episode first).
+        """
         if not self.ensure_authenticated():
             return []
         token = config.get("oneplay_token")
@@ -1030,40 +1074,65 @@ class OneplayProvider(BaseProvider):
             if isinstance(criteria, dict):
                 crit_val = criteria.get("filterCriterias") or criteria.get("criteria") or criteria
 
-            c_post = {
-                "payload": {
-                    "carouselId": carousel_id,
-                    "criteria": {"filterCriterias": crit_val, "sortOption": sort_order},
-                    "paging": {"count": 100, "position": 1}
-                }
-            }
-            res = self.api.call_api("carousel.display", data=c_post, token=token)
-            data = res.get("data") or res.get("result", {}).get("data") or {}
+            all_tiles: List[Dict[str, Any]] = []
+            position = 1
+            max_episodes = 500  # Cap per season
 
-            tiles = []
-            if isinstance(data, dict):
-                if "carousel" in data and isinstance(data["carousel"], dict):
-                    tiles = data["carousel"].get("tiles") or []
-                if not tiles and "tiles" in data:
+            while position <= max_episodes:
+                c_post = {
+                    "payload": {
+                        "carouselId": carousel_id,
+                        "criteria": {"filterCriterias": crit_val, "sortOption": sort_order},
+                        "paging": {"count": 12, "position": position}
+                    }
+                }
+                res = self.api.call_api("carousel.display", data=c_post, token=token)
+                data = res.get("data") or res.get("result", {}).get("data") or {}
+
+                tiles = []
+                carousel_obj = data.get("carousel") if isinstance(data, dict) else {}
+                if isinstance(carousel_obj, dict):
+                    tiles = carousel_obj.get("tiles") or []
+                if not tiles and isinstance(data, dict):
                     tiles = data.get("tiles") or []
-                if not tiles:
+                if not tiles and isinstance(data, dict):
                     for c in (data.get("carousels") or []):
                         if c.get("tiles"):
                             tiles.extend(c["tiles"])
 
-            # Fallback to ASC sort order if DESC returned nothing
-            if not tiles and sort_order != "ASC":
-                c_post["payload"]["criteria"]["sortOption"] = "ASC"
-                res_asc = self.api.call_api("carousel.display", data=c_post, token=token)
-                data_asc = res_asc.get("data") or res_asc.get("result", {}).get("data") or {}
-                if isinstance(data_asc, dict):
-                    if "carousel" in data_asc and isinstance(data_asc["carousel"], dict):
-                        tiles = data_asc["carousel"].get("tiles") or []
-                    if not tiles and "tiles" in data_asc:
+                # Fallback to ASC sort order on first page if DESC returned nothing
+                if not tiles and position == 1 and sort_order != "ASC":
+                    c_post["payload"]["criteria"]["sortOption"] = "ASC"
+                    res_asc = self.api.call_api("carousel.display", data=c_post, token=token)
+                    data_asc = res_asc.get("data") or res_asc.get("result", {}).get("data") or {}
+                    carousel_obj = data_asc.get("carousel") if isinstance(data_asc, dict) else {}
+                    if isinstance(carousel_obj, dict):
+                        tiles = carousel_obj.get("tiles") or []
+                    if not tiles and isinstance(data_asc, dict):
                         tiles = data_asc.get("tiles") or []
+                    if tiles:
+                        sort_order = "ASC"
+
+                if not tiles:
+                    break
+
+                all_tiles.extend(tiles)
+
+                # Check if there are further pages
+                has_next = False
+                if isinstance(carousel_obj, dict):
+                    has_next = bool(carousel_obj.get("paging", {}).get("next"))
+                if not has_next:
+                    break
+
+                position += len(tiles)
+
+            # Reverse DESC order to chronological ascending order (oldest first)
+            if sort_order == "DESC":
+                all_tiles.reverse()
 
             episodes = []
-            for tile in tiles:
+            for tile in all_tiles:
                 params = tile.get("action", {}).get("params") or {}
                 payload = params.get("payload") or {}
                 poster = self._extract_image_url(tile.get("image"), 480, 270)
