@@ -100,8 +100,8 @@ body {
 .nav-tab {
     display: inline-flex;
     align-items: center;
-    padding: 0.35rem 0.55rem;
-    border-radius: 0.6rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.55rem;
     font-size: 0.75rem;
     font-weight: 600;
     color: #94a3b8;
@@ -111,9 +111,9 @@ body {
     cursor: pointer;
     white-space: nowrap;
 }
-@media (min-width: 1280px) {
+@media (min-width: 1536px) {
     .nav-tab {
-        padding: 0.4rem 0.75rem;
+        padding: 0.35rem 0.65rem;
         font-size: 0.8125rem;
     }
 }

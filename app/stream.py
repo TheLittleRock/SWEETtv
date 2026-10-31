@@ -119,10 +119,14 @@ def safe_parse_timestamp(val: Any) -> Optional[int]:
         "%Y%m%d%H%M%S",
     )
     from datetime import datetime
+    import zoneinfo
+    prague_tz = zoneinfo.ZoneInfo("Europe/Prague")
     base_part = val_str.split("+")[0].strip()
     for fmt in formats:
         try:
             dt = datetime.strptime(base_part, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=prague_tz)
             return int(dt.timestamp())
         except (ValueError, TypeError):
             continue

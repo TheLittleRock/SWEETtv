@@ -500,19 +500,32 @@ class OneplayProvider(BaseProvider):
 
         # Apply catchup offset if requested
         if utc_time and "begin=" in stream_url:
-            stream_url = re.sub(r'([?&]begin=)[^&#]*', rf'\g<1>{int(utc_time)}', stream_url, count=1)
+            parsed_u = urllib.parse.urlparse(stream_url)
+            q = urllib.parse.parse_qs(parsed_u.query)
+            if "begin" in q:
+                cur_begin = int(q["begin"][0])
+                target_begin = int(utc_time)
+                new_begin = max(cur_begin, target_begin)
+                if "end" in q:
+                    end_val = int(q["end"][0])
+                    new_begin = min(new_begin, end_val - 1)
+                stream_url = re.sub(r'([?&]begin=)[^&#]*', rf'\g<1>{new_begin}', stream_url, count=1)
+            else:
+                stream_url = re.sub(r'([?&]begin=)[^&#]*', rf'\g<1>{int(utc_time)}', stream_url, count=1)
 
         return {
             "master_url": stream_url,
             "direct_redirect": False,  # Oneplay requires manifest proxying due to Firefox UA header requirement
             "provider": self.provider_id,
             "channel_id": clean_cid,
+            "is_catchup": bool(utc_time)
         }
 
-    def rewrite_manifest(self, url: str, base_url: str) -> str:
+    def rewrite_manifest(self, url: str, base_url: str, start_at_begin: bool = False) -> str:
         """
         Fetches master/variant manifest with browser headers, proxies variant .m3u8 playlists
-        and leaves .ts segment chunks pointing DIRECTLY to Oneplay CDN nodes for zero bandwidth usage.
+        and leaves .ts segment chunks pointing DIRECTLY to Oneplay CDN nodes with merged query tokens
+        for zero bandwidth usage and no 403 Forbidden errors.
         """
         headers = {
             "User-Agent": self.api.ua,
@@ -521,7 +534,7 @@ class OneplayProvider(BaseProvider):
         }
         try:
             req = Request(url, headers=headers)
-            with urlopen(req, timeout=12) as resp:
+            with urlopen(req, timeout=15) as resp:
                 final_url = resp.geturl() or url
                 raw = resp.read()
                 if resp.headers.get("Content-Encoding") == "gzip":
@@ -529,9 +542,36 @@ class OneplayProvider(BaseProvider):
 
             text = raw.decode("utf-8", errors="replace")
             lines = text.splitlines()
+
+            # If start_at_begin is requested for catchup/timeshift, inject #EXT-X-START:TIME-OFFSET=0,PRECISE=YES
+            if start_at_begin and any(line.startswith("#EXTINF:") for line in lines):
+                lines = [l for l in lines if not l.startswith("#EXT-X-START:")]
+                extm3u_idx = next((i for i, l in enumerate(lines) if l.startswith("#EXTM3U")), None)
+                if extm3u_idx is not None:
+                    lines.insert(extm3u_idx + 1, "#EXT-X-START:TIME-OFFSET=0,PRECISE=YES")
+
             base_dir = final_url.rsplit("/", 1)[0] + "/"
+            base_dir = base_dir.split("?")[0]
+            if not base_dir.endswith("/"):
+                base_dir += "/"
+
             parsed_parent = urllib.parse.urlparse(final_url)
             parent_query = urllib.parse.parse_qs(parsed_parent.query)
+
+            def _merge_url(uri: str) -> str:
+                if not uri.startswith("http"):
+                    uri = urllib.parse.urljoin(base_dir, uri)
+                parsed_uri = urllib.parse.urlparse(uri)
+                sub_params = urllib.parse.parse_qs(parsed_uri.query)
+                merged = dict(parent_query)
+                merged.update(sub_params)
+                return urllib.parse.urlunparse(parsed_uri._replace(query=urllib.parse.urlencode(merged, doseq=True)))
+
+            start_param = "&start_at_begin=1" if start_at_begin else ""
+
+            def make_proxy_url(uri: str) -> str:
+                merged_uri = _merge_url(uri)
+                return f"{base_url}/stream/oneplay/proxy_hls?url={urllib.parse.quote(merged_uri, safe='')}{start_param}"
 
             result = []
             for line in lines:
@@ -543,24 +583,17 @@ class OneplayProvider(BaseProvider):
                 if line.startswith("#"):
                     if 'URI="' in line:
                         def repl_uri(m):
-                            sub_uri = m.group(1)
-                            if not sub_uri.startswith("http"):
-                                sub_uri = urllib.parse.urljoin(base_dir, sub_uri)
-                            proxy_url = f"{base_url}/stream/oneplay/proxy_hls?url={urllib.parse.quote(sub_uri, safe='')}"
-                            return f'URI="{proxy_url}"'
+                            return f'URI="{make_proxy_url(m.group(1))}"'
                         result.append(re.sub(r'URI="([^"]+)"', repl_uri, line))
                     else:
                         result.append(line)
                 else:
                     # Media variant or chunk line
-                    full_uri = stripped if stripped.startswith("http") else urllib.parse.urljoin(base_dir, stripped)
-                    if ".m3u8" in full_uri:
-                        # Variant playlist -> route via proxy
-                        proxy_url = f"{base_url}/stream/oneplay/proxy_hls?url={urllib.parse.quote(full_uri, safe='')}"
-                        result.append(proxy_url)
+                    if stripped.endswith(".m3u8") or ".m3u8?" in stripped:
+                        result.append(make_proxy_url(stripped))
                     else:
-                        # Video TS segment -> Direct CDN URL!
-                        result.append(full_uri)
+                        # Video TS segment -> Direct CDN URL with merged CDN auth token!
+                        result.append(_merge_url(stripped))
 
             return "\n".join(result)
 
@@ -857,14 +890,6 @@ class OneplayProvider(BaseProvider):
         except Exception as e:
             logger.error(f"Error fetching Oneplay VOD items: {e}")
 
-        # If requesting series category, ensure items are marked as show
-        if category == "series":
-            for it in items:
-                it["content_type"] = "show"
-        elif category == "movies":
-            for it in items:
-                it["content_type"] = "movie"
-
         # Deduplicate
         unique_items = []
         seen = set()
@@ -874,10 +899,20 @@ class OneplayProvider(BaseProvider):
                 seen.add(iid)
                 unique_items.append(item)
 
+        # Filter according to category
+        if category == "series":
+            filtered_items = [it for it in unique_items if it.get("content_type") == "show"]
+        elif category == "movies":
+            filtered_items = [it for it in unique_items if it.get("content_type") == "movie"]
+        elif category == "recordings":
+            filtered_items = [it for it in unique_items if it.get("content_type") == "recording"]
+        else:
+            filtered_items = unique_items
+
         return {
-            "items": unique_items,
+            "items": filtered_items,
             "page": page,
-            "has_more": has_more or len(unique_items) >= 24
+            "has_more": has_more or len(filtered_items) >= 24
         }
 
     def get_series_detail(self, series_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -901,13 +936,13 @@ class OneplayProvider(BaseProvider):
                 if not meta and b.get("schema") == "ContentHeaderBlock":
                     meta = b
 
-            # Locate TabBlock containing "Celé díly"
+            # Locate TabBlock containing "Celé díly" or "Epizody"
             episodes_block = None
             for b in blocks:
                 if b.get("schema") == "TabBlock" and b.get("template") == "tabs":
                     for tab in (b.get("tabs") or []):
-                        tab_name = (tab.get("label") or {}).get("name")
-                        if tab_name == "Celé díly":
+                        tab_name = str((tab.get("label") or {}).get("name") or "")
+                        if any(k in tab_name.lower() for k in ("celé díly", "epizody", "díly", "seasons")):
                             if tab.get("isActive"):
                                 episodes_block = b
                             else:
@@ -917,44 +952,63 @@ class OneplayProvider(BaseProvider):
                     if episodes_block:
                         break
 
-            target_layout = (episodes_block.get("layout") or {}) if episodes_block else layout
-            target_blocks = target_layout.get("blocks") or blocks
-
             seasons = []
             episodes = []
 
-            for b in target_blocks:
-                carousels = b.get("carousels") or []
-                if not carousels:
-                    continue
-                carousel = carousels[0]
-                for t in (carousel.get("tiles") or []):
-                    p = (t.get("action", {}).get("params") or {}).get("payload") or {}
-                    episodes.append({
-                        "id": str(p.get("contentId") or t.get("id")),
-                        "title": t.get("title", ""),
-                        "description": t.get("description") or t.get("subTitle") or "",
-                        "duration": t.get("duration", 0),
-                        "image": self._extract_image_url(t.get("image"), 480, 270),
-                        "payload": p,
-                        "is_drm": True,
-                    })
+            # If episodes_block was found, look inside it
+            target_layout = (episodes_block.get("layout") or {}) if episodes_block else None
+            candidate_blocks = (target_layout.get("blocks") or [episodes_block]) if episodes_block else blocks
 
-                criteria_list = carousel.get("criteria") or []
-                if criteria_list:
-                    crit = criteria_list[0]
-                    if crit.get("template") == "showSeason":
-                        for item in (crit.get("items") or []):
-                            if item.get("label") and item.get("criteria"):
-                                seasons.append({
-                                    "label": item["label"],
-                                    "carouselId": carousel.get("id"),
-                                    "criteria": item["criteria"],
+            for b in candidate_blocks:
+                carousels = b.get("carousels") or []
+                for carousel in carousels:
+                    c_title = str(carousel.get("title") or "").lower()
+                    # CRITICAL: Never treat "Podobné tituly" (similar movies/shows) or "Doporučujeme" as episodes!
+                    if any(ignored in c_title for ignored in ("podobné", "doporuč", "další filmy", "mohlo by se")):
+                        continue
+
+                    # Check for seasons criteria (template == "showSeason")
+                    criteria_list = carousel.get("criteria") or []
+                    has_season_criteria = False
+                    for crit in criteria_list:
+                        if crit.get("template") == "showSeason":
+                            has_season_criteria = True
+                            for item in (crit.get("items") or []):
+                                if item.get("label") and item.get("criteria"):
+                                    seasons.append({
+                                        "label": str(item["label"]),
+                                        "carouselId": carousel.get("id"),
+                                        "criteria": item["criteria"],
+                                    })
+
+                    # If this is an episode carousel (inside episodes_block, or has season criteria, or title is "Epizody"/"Díly")
+                    is_episode_carousel = episodes_block is not None or has_season_criteria or any(k in c_title for k in ("epizod", "díl"))
+                    if is_episode_carousel:
+                        for t in (carousel.get("tiles") or []):
+                            t_action = t.get("action") or {}
+                            if t_action.get("call") == "content.play" or "contentId" in (t_action.get("params") or {}).get("payload", {}):
+                                p = (t_action.get("params") or {}).get("payload") or {}
+                                episodes.append({
+                                    "id": str(p.get("contentId") or t.get("id")),
+                                    "title": t.get("title", ""),
+                                    "description": t.get("description") or t.get("subTitle") or "",
+                                    "duration": t.get("duration", 0),
+                                    "image": self._extract_image_url(t.get("image"), 480, 270),
+                                    "payload": p,
+                                    "is_drm": True,
                                 })
 
             if seasons:
                 import re
-                seasons.sort(key=lambda s: int((re.findall(r"\d+", s["label"]) or [0])[0]))
+                def _season_sort_key(s):
+                    lbl = str(s.get("label", ""))
+                    nums = re.findall(r"\d+", lbl)
+                    return int(nums[0]) if nums else 999
+                seasons.sort(key=_season_sort_key)
+
+                # Pre-fetch first season episodes if episodes list is empty
+                if not episodes and seasons[0].get("carouselId") and seasons[0].get("criteria"):
+                    episodes = self.get_season_episodes(seasons[0]["carouselId"], seasons[0]["criteria"])
 
             poster = self._extract_image_url(meta.get("image") or data.get("image") or data.get("backdrop"), 800, 450)
 
@@ -976,17 +1030,20 @@ class OneplayProvider(BaseProvider):
             return []
         token = config.get("oneplay_token")
         try:
+            crit_val = criteria.get("criteria", criteria) if isinstance(criteria, dict) else criteria
             c_post = {
                 "payload": {
                     "carouselId": carousel_id,
-                    "criteria": {"filterCriterias": criteria, "sortOption": sort_order},
+                    "criteria": {"filterCriterias": crit_val, "sortOption": sort_order},
                     "paging": {"count": 100, "position": 1}
                 }
             }
             res = self.api.call_api("carousel.display", data=c_post, token=token)
             data = res.get("data") or res.get("result", {}).get("data") or {}
+            carousel_obj = data.get("carousel") or data
+            tiles = carousel_obj.get("tiles") or []
             episodes = []
-            for tile in (data.get("tiles") or []):
+            for tile in tiles:
                 params = tile.get("action", {}).get("params") or {}
                 payload = params.get("payload") or {}
                 poster = self._extract_image_url(tile.get("image"), 480, 270)

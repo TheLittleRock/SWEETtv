@@ -291,29 +291,35 @@ async def player_api(
 
     # 7. VOD Info
     if action == "get_vod_info":
-        eff_id = vod_id or stream_id
         try:
+            eff_id = vod_id or stream_id
             vid = int(clean_id(str(eff_id))) if eff_id else 0
         except Exception:
             vid = 0
 
         item = _vod_cache_by_id.get(vid)
         if not item and config.oneplay_enabled and config.is_oneplay_logged:
-            res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
-            idx = 0
-            for it in (res_m.get("items") or []):
-                idx += 1
-                _vod_cache_by_id[30000 + idx] = it
-            res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
-            idx = 0
-            for it in (res_r.get("items") or []):
-                idx += 1
-                _vod_cache_by_id[31000 + idx] = it
-            item = _vod_cache_by_id.get(vid)
+            try:
+                res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+                idx = 0
+                for it in (res_m.get("items") or []):
+                    idx += 1
+                    _vod_cache_by_id[30000 + idx] = it
+                res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
+                idx = 0
+                for it in (res_r.get("items") or []):
+                    idx += 1
+                    _vod_cache_by_id[31000 + idx] = it
+                item = _vod_cache_by_id.get(vid)
+            except Exception as e:
+                logger.error(f"Error refreshing VOD cache for {vid}: {e}")
 
         name = item.get("title", f"Film {vid}") if item else f"Film {vid}"
         poster = item.get("image", "") if item else ""
         desc = item.get("description", "") if item else ""
+        dur = item.get("duration") if item else None
+        dur_int = int(dur) if dur is not None and str(dur).isdigit() else 7200
+        year_val = str(item.get("year", "2024") if item else "2024")
         return JSONResponse(content={
             "info": {
                 "name": name,
@@ -323,8 +329,8 @@ async def player_api(
                 "cast": "",
                 "director": "",
                 "genre": "Oneplay",
-                "release_date": item.get("year", "2024") if item else "2024",
-                "duration_secs": item.get("duration", 7200) if item else 7200,
+                "release_date": year_val,
+                "duration_secs": dur_int,
                 "duration": "02:00:00",
                 "video": {},
                 "audio": {},
@@ -347,51 +353,62 @@ async def player_api(
     if action == "get_series":
         series_out = []
         if config.oneplay_enabled and config.is_oneplay_logged:
-            res = provider_manager.oneplay.get_vod_items(category="series", page=1)
-            items = res.get("items") or []
-            idx = 0
-            for it in items:
-                idx += 1
-                sid = 40000 + idx
-                _series_cache_by_id[sid] = it
-                series_out.append({
-                    "num": idx,
-                    "name": it.get("title", ""),
-                    "series_id": sid,
-                    "cover": it.get("image", ""),
-                    "plot": it.get("description", ""),
-                    "cast": "",
-                    "director": "",
-                    "genre": "Seriál",
-                    "releaseDate": it.get("year", "2024"),
-                    "last_modified": "1600000000",
-                    "rating": "8.0",
-                    "rating_5based": 4.0,
-                    "category_id": "4000"
-                })
+            try:
+                res = provider_manager.oneplay.get_vod_items(category="series", page=1)
+                items = res.get("items") or []
+                idx = 0
+                for it in items:
+                    idx += 1
+                    sid = 40000 + idx
+                    _series_cache_by_id[sid] = it
+                    series_out.append({
+                        "num": idx,
+                        "name": it.get("title", ""),
+                        "series_id": sid,
+                        "cover": it.get("image", ""),
+                        "plot": it.get("description", ""),
+                        "cast": "",
+                        "director": "",
+                        "genre": "Seriál",
+                        "releaseDate": str(it.get("year", "2024") or "2024"),
+                        "last_modified": "1600000000",
+                        "rating": "8.0",
+                        "rating_5based": 4.0,
+                        "category_id": "4000"
+                    })
+            except Exception as e:
+                logger.error(f"Error fetching series in get_series: {e}")
         return JSONResponse(content=series_out)
 
     # 10. Series Info (Seasons & Episodes)
     if action == "get_series_info":
-        eff_sid = series_id or stream_id
         try:
+            eff_sid = series_id or stream_id
             sid = int(clean_id(str(eff_sid))) if eff_sid else 0
         except Exception:
             sid = 0
 
         s_item = _series_cache_by_id.get(sid)
         if (not s_item or not s_item.get("payload")) and config.oneplay_enabled and config.is_oneplay_logged:
-            res = provider_manager.oneplay.get_vod_items(category="series", page=1)
-            idx = 0
-            for it in (res.get("items") or []):
-                idx += 1
-                _series_cache_by_id[40000 + idx] = it
-            s_item = _series_cache_by_id.get(sid)
+            try:
+                res = provider_manager.oneplay.get_vod_items(category="series", page=1)
+                idx = 0
+                for it in (res.get("items") or []):
+                    idx += 1
+                    _series_cache_by_id[40000 + idx] = it
+                s_item = _series_cache_by_id.get(sid)
+            except Exception as e:
+                logger.error(f"Error refreshing series cache in get_series_info for {sid}: {e}")
 
         if not s_item or not s_item.get("payload"):
             return JSONResponse(content={"seasons": [], "info": {}, "episodes": {}})
 
-        detail = provider_manager.oneplay.get_series_detail(s_item["payload"])
+        try:
+            detail = provider_manager.oneplay.get_series_detail(s_item["payload"])
+        except Exception as e:
+            logger.error(f"Error getting series detail for {sid}: {e}")
+            detail = {}
+
         seasons_meta = []
         episodes_map: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -409,13 +426,19 @@ async def player_api(
                     "air_date": "2024"
                 })
                 # Fetch season episodes
-                eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
+                try:
+                    eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
+                except Exception as e:
+                    logger.error(f"Error fetching season episodes in get_series_info for {season}: {e}")
+                    eps = []
                 ep_list = []
                 ep_num = 0
                 for ep in eps:
                     ep_num += 1
                     ep_sid = (sid * 100) + ep_num
                     _vod_cache_by_id[ep_sid] = ep
+                    dur_ep = ep.get("duration")
+                    dur_ep_int = int(dur_ep) if dur_ep is not None and str(dur_ep).isdigit() else 3000
                     ep_list.append({
                         "id": ep_sid,
                         "episode_num": ep_num,
@@ -424,7 +447,7 @@ async def player_api(
                         "info": {
                             "name": ep.get("title", ""),
                             "plot": ep.get("description", ""),
-                            "duration_secs": ep.get("duration", 3000),
+                            "duration_secs": dur_ep_int,
                             "movie_image": ep.get("image", "")
                         }
                     })
@@ -438,6 +461,8 @@ async def player_api(
                 ep_num += 1
                 ep_sid = (sid * 100) + ep_num
                 _vod_cache_by_id[ep_sid] = ep
+                dur_ep = ep.get("duration")
+                dur_ep_int = int(dur_ep) if dur_ep is not None and str(dur_ep).isdigit() else 3000
                 ep_list.append({
                     "id": ep_sid,
                     "episode_num": ep_num,
@@ -446,7 +471,7 @@ async def player_api(
                     "info": {
                         "name": ep.get("title", ""),
                         "plot": ep.get("description", ""),
-                        "duration_secs": ep.get("duration", 3000),
+                        "duration_secs": dur_ep_int,
                         "movie_image": ep.get("image", "")
                     }
                 })
@@ -458,8 +483,8 @@ async def player_api(
                 "name": detail.get("title", s_item.get("title")),
                 "cover": detail.get("image", s_item.get("image")),
                 "plot": detail.get("description", s_item.get("description")),
-                "genre": "Oneplay Series",
-                "releaseDate": s_item.get("year", "2024"),
+                "genre": "Seriál",
+                "releaseDate": str(detail.get("year", "2024") or "2024"),
                 "rating": "8.0",
                 "rating_5based": 4.0
             },
@@ -505,7 +530,7 @@ def xtream_live_stream(
         if not stream_info or not stream_info.get("master_url"):
             raise HTTPException(status_code=502, detail="Failed to retrieve stream from Oneplay.")
 
-        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["master_url"], base_url)
+        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["master_url"], base_url, start_at_begin=False)
         return Response(
             content=rewritten,
             media_type="application/vnd.apple.mpegurl",
@@ -581,7 +606,7 @@ def xtream_timeshift_stream(
         if not stream_info or not stream_info.get("master_url"):
             raise HTTPException(status_code=502, detail="Failed to retrieve catchup stream from Oneplay.")
 
-        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["master_url"], base_url)
+        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["master_url"], base_url, start_at_begin=True)
         return Response(
             content=rewritten,
             media_type="application/vnd.apple.mpegurl",
@@ -642,16 +667,41 @@ def xtream_movie_stream(
     if not item or not item.get("payload"):
         # Auto-reload VOD cache if expired or missing
         if config.oneplay_enabled and config.is_oneplay_logged:
-            res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
-            idx = 0
-            for it in (res_m.get("items") or []):
-                idx += 1
-                _vod_cache_by_id[30000 + idx] = it
-            res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
-            idx = 0
-            for it in (res_r.get("items") or []):
-                idx += 1
-                _vod_cache_by_id[31000 + idx] = it
+            try:
+                # Check if this is a series episode (sid_int >= 400000)
+                if sid_int >= 400000:
+                    series_base_id = sid_int // 100
+                    s_item = _series_cache_by_id.get(series_base_id)
+                    if not s_item or not s_item.get("payload"):
+                        res_s = provider_manager.oneplay.get_vod_items(category="series", page=1)
+                        idx = 0
+                        for it in (res_s.get("items") or []):
+                            idx += 1
+                            _series_cache_by_id[40000 + idx] = it
+                        s_item = _series_cache_by_id.get(series_base_id)
+                    if s_item and s_item.get("payload"):
+                        detail = provider_manager.oneplay.get_series_detail(s_item["payload"])
+                        for season in (detail.get("seasons") or []):
+                            eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
+                            ep_idx = 0
+                            for ep in eps:
+                                ep_idx += 1
+                                _vod_cache_by_id[(series_base_id * 100) + ep_idx] = ep
+                        for ep_idx, ep in enumerate(detail.get("episodes") or []):
+                            _vod_cache_by_id[(series_base_id * 100) + (ep_idx + 1)] = ep
+                else:
+                    res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1)
+                    idx = 0
+                    for it in (res_m.get("items") or []):
+                        idx += 1
+                        _vod_cache_by_id[30000 + idx] = it
+                    res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
+                    idx = 0
+                    for it in (res_r.get("items") or []):
+                        idx += 1
+                        _vod_cache_by_id[31000 + idx] = it
+            except Exception as e:
+                logger.error(f"Error auto-reloading VOD cache for {sid_int}: {e}")
         item = _vod_cache_by_id.get(sid_int)
 
     if not item or not item.get("payload"):
@@ -663,7 +713,7 @@ def xtream_movie_stream(
 
     if stream_info.get("manifest_type") == "hls":
         base_url = get_effective_base_url(request)
-        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["url"], base_url)
+        rewritten = provider_manager.oneplay.rewrite_manifest(stream_info["url"], base_url, start_at_begin=False)
         return Response(
             content=rewritten,
             media_type="application/vnd.apple.mpegurl",

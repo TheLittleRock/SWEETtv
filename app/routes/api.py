@@ -824,7 +824,8 @@ def get_oneplay_season_episodes_api(
     current_user: User = Depends(require_user)
 ) -> Dict[str, Any]:
     """Returns episode tiles for a specific series season."""
-    episodes = provider_manager.oneplay.get_season_episodes(carousel_id, criteria, sort_order)
+    crit_val = criteria.get("criteria", criteria) if isinstance(criteria, dict) else criteria
+    episodes = provider_manager.oneplay.get_season_episodes(carousel_id, crit_val, sort_order)
     return {"episodes": episodes}
 
 

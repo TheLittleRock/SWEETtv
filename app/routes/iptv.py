@@ -1,6 +1,8 @@
+import gzip
 import logging
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, unquote
+from urllib.request import Request as URLRequest, urlopen
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.auth import validate_token_or_session
@@ -186,14 +188,49 @@ def get_epg_gz(
 # =========================================================================
 
 @router.get("/stream/oneplay/proxy_hls", response_class=Response)
-def proxy_oneplay_hls(request: Request, url: str = Query(..., description="Target Oneplay HLS URL")):
+def proxy_oneplay_hls(
+    request: Request,
+    url: str = Query(..., description="Target Oneplay HLS URL"),
+    start_at_begin: Optional[str] = Query(None)
+):
     """
     Proxies child variant playlists for Oneplay using Firefox headers,
     while leaving video segment (.ts/.m4s) URLs directing to the CDN edge.
+    If binary chunk requested, proxies bytes directly.
     """
     raw_url = unquote(url)
     base_url = get_effective_base_url(request)
-    rewritten = provider_manager.oneplay.rewrite_manifest(raw_url, base_url)
+    headers = {
+        "User-Agent": provider_manager.oneplay.api.ua,
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip",
+    }
+    try:
+        req = URLRequest(raw_url, headers=headers)
+        with urlopen(req, timeout=15) as resp:
+            final_url = resp.geturl() or raw_url
+            raw_data = resp.read()
+            content_encoding = resp.headers.get("Content-Encoding")
+            content_type = resp.headers.get("Content-Type", "application/vnd.apple.mpegurl")
+    except Exception as e:
+        logger.error(f"Error proxying Oneplay HLS from {raw_url}: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch upstream URL: {e}")
+
+    if content_encoding == "gzip":
+        raw_data = gzip.decompress(raw_data)
+
+    if not (final_url.endswith(".m3u8") or ".m3u8?" in final_url or "mpegurl" in content_type.lower() or "vnd.apple" in content_type.lower()):
+        return Response(
+            content=raw_data,
+            media_type=content_type,
+            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"}
+        )
+
+    rewritten = provider_manager.oneplay.rewrite_manifest(
+        final_url,
+        base_url,
+        start_at_begin=(start_at_begin == "1")
+    )
     return Response(
         content=rewritten,
         media_type="application/vnd.apple.mpegurl",
@@ -233,7 +270,11 @@ def get_oneplay_stream(
         raise HTTPException(status_code=502, detail="Failed to retrieve stream from Oneplay.")
 
     base_url = get_effective_base_url(request)
-    rewritten_manifest = provider_manager.oneplay.rewrite_manifest(stream_info["master_url"], base_url)
+    rewritten_manifest = provider_manager.oneplay.rewrite_manifest(
+        stream_info["master_url"],
+        base_url,
+        start_at_begin=bool(utc_time)
+    )
 
     return Response(
         content=rewritten_manifest,
