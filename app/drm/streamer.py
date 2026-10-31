@@ -93,11 +93,13 @@ def patch_mp4_duration(buffer: bytes, duration_sec: float) -> bytes:
     if ver == 0:
         mv_ts = struct.unpack(">I", data[mvhd_idx + 16 : mvhd_idx + 20])[0]
         if mv_ts > 0:
-            data[mvhd_idx + 20 : mvhd_idx + 24] = struct.pack(">I", int(duration_sec * mv_ts))
+            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFF)
+            data[mvhd_idx + 20 : mvhd_idx + 24] = struct.pack(">I", val)
     elif ver == 1:
         mv_ts = struct.unpack(">I", data[mvhd_idx + 24 : mvhd_idx + 28])[0]
         if mv_ts > 0:
-            data[mvhd_idx + 28 : mvhd_idx + 36] = struct.pack(">Q", int(duration_sec * mv_ts))
+            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFFFFFFFFFF)
+            data[mvhd_idx + 28 : mvhd_idx + 36] = struct.pack(">Q", val)
 
     # 2. Patch all tkhd boxes (Track headers)
     pos = 0
@@ -107,9 +109,11 @@ def patch_mp4_duration(buffer: bytes, duration_sec: float) -> bytes:
             break
         t_ver = data[idx + 4]
         if t_ver == 0 and mv_ts > 0:
-            data[idx + 24 : idx + 28] = struct.pack(">I", int(duration_sec * mv_ts))
+            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFF)
+            data[idx + 24 : idx + 28] = struct.pack(">I", val)
         elif t_ver == 1 and mv_ts > 0:
-            data[idx + 32 : idx + 40] = struct.pack(">Q", int(duration_sec * mv_ts))
+            val = min(max(int(duration_sec * mv_ts), 0), 0xFFFFFFFFFFFFFFFF)
+            data[idx + 32 : idx + 40] = struct.pack(">Q", val)
         pos = idx + 4
 
     # 3. Patch all mdhd boxes (Media headers)
@@ -122,11 +126,13 @@ def patch_mp4_duration(buffer: bytes, duration_sec: float) -> bytes:
         if m_ver == 0:
             md_ts = struct.unpack(">I", data[idx + 16 : idx + 20])[0]
             if md_ts > 0:
-                data[idx + 20 : idx + 24] = struct.pack(">I", int(duration_sec * md_ts))
+                val = min(max(int(duration_sec * md_ts), 0), 0xFFFFFFFF)
+                data[idx + 20 : idx + 24] = struct.pack(">I", val)
         elif m_ver == 1:
             md_ts = struct.unpack(">I", data[idx + 24 : idx + 28])[0]
             if md_ts > 0:
-                data[idx + 28 : idx + 36] = struct.pack(">Q", int(duration_sec * md_ts))
+                val = min(max(int(duration_sec * md_ts), 0), 0xFFFFFFFFFFFFFFFF)
+                data[idx + 28 : idx + 36] = struct.pack(">Q", val)
         pos = idx + 4
 
     return bytes(data)
@@ -387,6 +393,7 @@ async def ffmpeg_stream_generator(
     if output_format.lower() == "mp4":
         cmd.extend([
             "-f", "mp4",
+            "-movie_timescale", "1000",
             "-movflags", "frag_keyframe+empty_moov+default_base_moof",
             "pipe:1"
         ])
