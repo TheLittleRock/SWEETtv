@@ -1,4 +1,8 @@
+import asyncio
 import logging
+import math
+import os
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -11,7 +15,7 @@ import requests
 from app.auth import authenticate_user
 from app.config import config
 from app.drm.oneplay_wv import drm_manager
-from app.drm.streamer import ffmpeg_stream_generator
+from app.drm.streamer import ffmpeg_stream_generator, find_ffmpeg_binary, prepare_dash_manifest
 from app.epg import get_cached_channels
 from app.providers.manager import provider_manager
 from app.routes.iptv import clean_id, get_effective_base_url
@@ -23,6 +27,7 @@ router = APIRouter(tags=["Xtream Codes API"])
 _vod_cache_by_id: Dict[int, Dict[str, Any]] = {}
 _series_cache_by_id: Dict[int, Dict[str, Any]] = {}
 _series_info_cache: Dict[int, Tuple[float, Dict[str, Any]]] = {}
+_vod_session_cache: Dict[int, Dict[str, Any]] = {}
 
 
 def validate_xtream_user(username: Optional[str], password: Optional[str]) -> bool:
@@ -725,33 +730,14 @@ async def xtream_movie_stream(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid stream ID.")
 
-    is_mp4 = request.url.path.endswith(".mp4")
+    url_path = request.url.path.lower()
+    is_m3u8 = url_path.endswith(".m3u8")
+    is_mp4 = url_path.endswith(".mp4")
     out_format = "mp4" if is_mp4 else "ts"
-    media_type = "video/mp4" if is_mp4 else "video/mp2t"
-    file_ext = "mp4" if is_mp4 else "ts"
+    media_type = "video/mp4" if is_mp4 else ("application/vnd.apple.mpegurl" if is_m3u8 else "video/mp2t")
+    file_ext = "mp4" if is_mp4 else ("m3u8" if is_m3u8 else "ts")
 
     item = _vod_cache_by_id.get(sid_int)
-
-    # Fast probe response for HEAD requests from IPTV players (e.g. TiviMate, VLC, IPTVnator)
-    if request.method == "HEAD":
-        head_dur = item.get("duration") if item else 0
-        head_headers = {
-            "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
-            "Accept-Ranges": "none",
-        }
-        try:
-            if head_dur and float(head_dur) > 0:
-                head_headers["X-Content-Duration"] = str(int(float(head_dur)))
-                head_headers["Content-Duration"] = str(int(float(head_dur)))
-        except Exception:
-            pass
-        return Response(
-            status_code=200,
-            media_type=media_type,
-            headers=head_headers
-        )
     if not item or not item.get("payload"):
         # Auto-reload VOD cache if expired or missing
         if config.oneplay_enabled and config.is_oneplay_logged:
@@ -802,6 +788,34 @@ async def xtream_movie_stream(
                 logger.error(f"Error auto-reloading VOD cache for {sid_int}: {e}")
         item = _vod_cache_by_id.get(sid_int)
 
+    dur_val = item.get("duration") if item else 0
+    try:
+        duration_sec = float(dur_val) if dur_val is not None else 0.0
+    except Exception:
+        duration_sec = 0.0
+
+    bytes_per_sec = 820_000 if out_format == "ts" else 775_000
+    total_bytes = int(duration_sec * bytes_per_sec) if duration_sec > 0 else 2_500_000_000
+
+    # Fast probe response for HEAD requests from IPTV players (e.g. VLC, TiviMate, IPTVnator)
+    if request.method == "HEAD":
+        head_headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
+            "Accept-Ranges": "bytes" if not is_m3u8 else "none",
+        }
+        if not is_m3u8:
+            head_headers["Content-Length"] = str(total_bytes)
+        if duration_sec > 0:
+            head_headers["X-Content-Duration"] = str(int(duration_sec))
+            head_headers["Content-Duration"] = str(int(duration_sec))
+        return Response(
+            status_code=200,
+            media_type=media_type,
+            headers=head_headers
+        )
+
     if not item or not item.get("payload"):
         raise HTTPException(status_code=404, detail="VOD item not found or expired.")
 
@@ -823,69 +837,233 @@ async def xtream_movie_stream(
             headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"}
         )
 
-    # 2. Widevine DRM DASH or standard DASH -> on-the-fly decryption and remuxing to MPEG-TS via FFmpeg
-    if manifest_type == "mpd" or is_drm:
+    # 2. HLS playlist request for DASH/DRM VOD -> generate standard HLS VOD playlist
+    if is_m3u8:
+        base_url = get_effective_base_url(request)
+        seg_duration = 10.0
+        total_dur = duration_sec if duration_sec > 0 else 7200.0
+        num_segs = max(1, int(math.ceil(total_dur / seg_duration)))
+        lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            f"#EXT-X-TARGETDURATION:{int(seg_duration) + 1}",
+            "#EXT-X-MEDIA-SEQUENCE:0",
+            "#EXT-X-PLAYLIST-TYPE:VOD",
+        ]
+        for seg_idx in range(num_segs):
+            cur_start = seg_idx * seg_duration
+            cur_dur = min(seg_duration, total_dur - cur_start)
+            lines.append(f"#EXTINF:{cur_dur:.3f},")
+            lines.append(f"{base_url}/vod_segment/{username}/{password}/{sid_int}/{int(cur_start)}.ts")
+        lines.append("#EXT-X-ENDLIST\n")
+        return Response(
+            content="\n".join(lines),
+            media_type="application/vnd.apple.mpegurl",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=3600"
+            }
+        )
+
+    # 3. Direct MPEG-TS or fragmented MP4 streaming via FFmpeg with HTTP Range seeking
+    range_header = request.headers.get("range")
+    start_param = request.query_params.get("start") or request.query_params.get("t")
+
+    start_sec = 0.0
+    start_byte = 0
+    end_byte = total_bytes - 1
+    is_range = False
+
+    if start_param:
+        try:
+            start_sec = max(0.0, float(start_param))
+            if duration_sec > 0:
+                start_byte = int((start_sec / duration_sec) * total_bytes)
+            is_range = True
+        except ValueError:
+            pass
+    elif range_header and range_header.startswith("bytes="):
+        try:
+            r_str = range_header[6:].strip()
+            parts = r_str.split("-", 1)
+            if parts[0]:
+                start_byte = int(parts[0])
+            if len(parts) > 1 and parts[1]:
+                end_byte = int(parts[1])
+            is_range = True
+            if duration_sec > 0 and total_bytes > 0:
+                start_ratio = min(max(float(start_byte) / float(total_bytes), 0.0), 0.999)
+                start_sec = round(start_ratio * duration_sec, 2)
+        except ValueError:
+            pass
+
+    decryption_keys = []
+    if is_drm:
+        drm_meta = stream_info.get("drm") or {}
+        token_val = drm_meta.get("token") or ""
+        lic_url = drm_meta.get("license_url")
+        try:
+            h = {
+                "User-Agent": provider_manager.oneplay.api.ua,
+                "Referer": "https://www.oneplay.cz/",
+                "Origin": "https://www.oneplay.cz"
+            }
+            r_mpd = requests.get(stream_url, headers=h, timeout=10)
+            if r_mpd.status_code == 200:
+                pssh = drm_manager.extract_pssh_from_mpd(r_mpd.text, base_url=stream_url)
+                if pssh:
+                    keys = drm_manager.get_decryption_keys(pssh, token_val, license_url=lic_url)
+                    decryption_keys = [k[1] for k in keys if k and len(k) > 1 and k[1]]
+                    logger.info(f"Derived {len(decryption_keys)} decryption key(s) for VOD stream {sid_int}")
+                else:
+                    logger.warning(f"Could not extract PSSH from MPD manifest for VOD {sid_int}")
+            else:
+                logger.error(f"Failed to fetch MPD manifest (HTTP {r_mpd.status_code}) for VOD {sid_int}")
+        except Exception as e:
+            logger.error(f"Error acquiring DRM keys for VOD stream {sid_int}: {e}")
+
+    headers_dict = {
+        "User-Agent": provider_manager.oneplay.api.ua,
+        "Referer": "https://www.oneplay.cz/"
+    }
+    generator = ffmpeg_stream_generator(
+        stream_url=stream_url,
+        decryption_keys=decryption_keys,
+        headers=headers_dict,
+        output_format=out_format,
+        duration_secs=duration_sec,
+        start_time=start_sec,
+        chunk_size=524288
+    )
+    resp_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
+        "Accept-Ranges": "bytes",
+    }
+    if duration_sec > 0:
+        resp_headers["X-Content-Duration"] = str(int(duration_sec))
+        resp_headers["Content-Duration"] = str(int(duration_sec))
+
+    if is_range:
+        resp_headers["Content-Range"] = f"bytes {start_byte}-{end_byte}/{total_bytes}"
+        return StreamingResponse(
+            content=generator,
+            status_code=206,
+            media_type=media_type,
+            headers=resp_headers
+        )
+
+    return StreamingResponse(
+        content=generator,
+        status_code=200,
+        media_type=media_type,
+        headers=resp_headers
+    )
+
+
+@router.get("/vod_segment/{username}/{password}/{stream_id}/{start_sec}.ts")
+async def xtream_vod_segment(
+    username: str,
+    password: str,
+    stream_id: str,
+    start_sec: int
+):
+    """Generates an individual 10-second MPEG-TS segment for HLS VOD playback."""
+    if not validate_xtream_user(username, password):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
+    try:
+        sid_int = int(clean_id(stream_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid stream ID.")
+
+    now = time.time()
+    session = _vod_session_cache.get(sid_int)
+    if not session or session.get("expiry", 0) < now or not os.path.exists(session.get("mpd_path", "")):
+        item = _vod_cache_by_id.get(sid_int)
+        if not item or not item.get("payload"):
+            raise HTTPException(status_code=404, detail="VOD item not found.")
+
+        stream_info = provider_manager.oneplay.get_vod_stream(item["payload"])
+        if not stream_info or not stream_info.get("url"):
+            raise HTTPException(status_code=502, detail="Failed to resolve VOD stream.")
+
+        stream_url = stream_info.get("url")
+        is_drm = bool(stream_info.get("is_drm"))
         decryption_keys = []
         if is_drm:
             drm_meta = stream_info.get("drm") or {}
             token_val = drm_meta.get("token") or ""
             lic_url = drm_meta.get("license_url")
-            try:
-                # Fetch MPD to extract Widevine PSSH
-                h = {
-                    "User-Agent": provider_manager.oneplay.api.ua,
-                    "Referer": "https://www.oneplay.cz/",
-                    "Origin": "https://www.oneplay.cz"
-                }
-                r_mpd = requests.get(stream_url, headers=h, timeout=10)
-                if r_mpd.status_code == 200:
-                    pssh = drm_manager.extract_pssh_from_mpd(r_mpd.text, base_url=stream_url)
-                    if pssh:
-                        keys = drm_manager.get_decryption_keys(pssh, token_val, license_url=lic_url)
-                        decryption_keys = [k[1] for k in keys if k and len(k) > 1 and k[1]]
-                        logger.info(f"Derived {len(decryption_keys)} decryption key(s) for VOD stream {sid_int}")
-                    else:
-                        logger.warning(f"Could not extract PSSH from MPD manifest for VOD {sid_int}")
-                else:
-                    logger.error(f"Failed to fetch MPD manifest (HTTP {r_mpd.status_code}) for VOD {sid_int}")
-            except Exception as e:
-                logger.error(f"Error acquiring DRM keys for VOD stream {sid_int}: {e}")
+            h = {"User-Agent": provider_manager.oneplay.api.ua, "Referer": "https://www.oneplay.cz/", "Origin": "https://www.oneplay.cz"}
+            r_mpd = requests.get(stream_url, headers=h, timeout=10)
+            if r_mpd.status_code == 200:
+                pssh = drm_manager.extract_pssh_from_mpd(r_mpd.text, base_url=stream_url)
+                if pssh:
+                    keys = drm_manager.get_decryption_keys(pssh, token_val, license_url=lic_url)
+                    decryption_keys = [k[1] for k in keys if k and len(k) > 1 and k[1]]
 
-        dur_val = item.get("duration") if item else 0
-        try:
-            duration_sec = float(dur_val) if dur_val is not None else 0.0
-        except Exception:
-            duration_sec = 0.0
+        h = {"User-Agent": provider_manager.oneplay.api.ua, "Referer": "https://www.oneplay.cz/"}
+        r_mpd = requests.get(stream_url, headers=h, timeout=10)
+        rewritten, _, _, _ = prepare_dash_manifest(r_mpd.text, stream_url)
+        fd, temp_mpd_path = tempfile.mkstemp(suffix=".mpd", prefix="vod_dash_seg_")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(rewritten)
 
-        # Stream clear MPEG-TS or fragmented MP4 directly via FFmpeg
-        headers_dict = {
-            "User-Agent": provider_manager.oneplay.api.ua,
-            "Referer": "https://www.oneplay.cz/"
+        # Evict old sessions if cache grows large
+        if len(_vod_session_cache) > 10:
+            oldest_sid = min(_vod_session_cache, key=lambda k: _vod_session_cache[k].get("expiry", 0))
+            old_s = _vod_session_cache.pop(oldest_sid, None)
+            if old_s and old_s.get("mpd_path") and os.path.exists(old_s["mpd_path"]):
+                try:
+                    os.remove(old_s["mpd_path"])
+                except Exception:
+                    pass
+
+        session = {
+            "mpd_path": temp_mpd_path,
+            "keys": decryption_keys,
+            "expiry": now + 7200
         }
-        generator = ffmpeg_stream_generator(
-            stream_url=stream_url,
-            decryption_keys=decryption_keys,
-            headers=headers_dict,
-            output_format=out_format,
-            duration_secs=duration_sec
-        )
-        resp_headers = {
+        _vod_session_cache[sid_int] = session
+
+    ffmpeg_bin = find_ffmpeg_binary()
+    if not ffmpeg_bin:
+        raise HTTPException(status_code=500, detail="FFmpeg binary not found.")
+
+    cmd = [
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel", "warning",
+        "-ss", str(start_sec),
+        "-allowed_extensions", "ALL",
+        "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
+    ]
+    if session.get("keys"):
+        cmd.extend(["-cenc_decryption_key", session["keys"][0]])
+    cmd.extend([
+        "-i", session["mpd_path"],
+        "-c:v", "copy",
+        "-c:a", "copy",
+        "-t", "10",
+        "-f", "mpegts",
+        "pipe:1"
+    ])
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, _ = await proc.communicate()
+    return Response(
+        content=stdout,
+        media_type="video/mp2t",
+        headers={
             "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
-            "Accept-Ranges": "none",
+            "Cache-Control": "public, max-age=86400"
         }
-        if duration_sec > 0:
-            resp_headers["X-Content-Duration"] = str(int(duration_sec))
-            resp_headers["Content-Duration"] = str(int(duration_sec))
-
-        return StreamingResponse(
-            content=generator,
-            media_type=media_type,
-            headers=resp_headers
-        )
-
-    return RedirectResponse(url=stream_url, status_code=302)
+    )
 
 
 @router.api_route("/series/{username}/{password}/{stream_id}.m3u8", methods=["GET", "HEAD"])

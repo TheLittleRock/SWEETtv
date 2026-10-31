@@ -129,3 +129,79 @@ def test_patch_mp4_duration():
     md_idx = patched.find(b"mdhd")
     md_dur = struct.unpack(">I", patched[md_idx + 20 : md_idx + 24])[0]
     assert md_dur == int(target_sec * 12800)
+
+
+def test_xtream_movie_head_probe_content_length():
+    """Verify HEAD requests return non-zero Content-Length and Accept-Ranges: bytes for players like VLC."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.routes.xtream import _vod_cache_by_id
+
+    # Seed mock item in cache
+    _vod_cache_by_id[39999] = {
+        "id": "movie.mock",
+        "title": "Mock Movie",
+        "duration": 5400,  # 90 minutes
+        "payload": {"contentId": "movie.mock"}
+    }
+
+    client = TestClient(app)
+
+    # 1. HEAD on .ts
+    resp_ts = client.head("/movie/sweettv/sweet/39999.ts")
+    assert resp_ts.status_code == 200
+    assert resp_ts.headers["content-type"] == "video/mp2t"
+    assert resp_ts.headers["accept-ranges"] == "bytes"
+    cl_ts = int(resp_ts.headers["content-length"])
+    assert cl_ts > 1_000_000_000  # ~4.4 GB for 5400s
+    assert resp_ts.headers["x-content-duration"] == "5400"
+
+    # 2. HEAD on .mp4
+    resp_mp4 = client.head("/movie/sweettv/sweet/39999.mp4")
+    assert resp_mp4.status_code == 200
+    assert resp_mp4.headers["content-type"] == "video/mp4"
+    assert resp_mp4.headers["accept-ranges"] == "bytes"
+    cl_mp4 = int(resp_mp4.headers["content-length"])
+    assert cl_mp4 > 1_000_000_000
+    assert resp_mp4.headers["x-content-duration"] == "5400"
+
+    # 3. HEAD on .m3u8
+    resp_m3u8 = client.head("/movie/sweettv/sweet/39999.m3u8")
+    assert resp_m3u8.status_code == 200
+    assert resp_m3u8.headers["content-type"] == "application/vnd.apple.mpegurl"
+
+
+def test_xtream_movie_m3u8_hls_playlist_generation(monkeypatch):
+    """Verify GET .m3u8 on VOD generates a valid HLS VOD playlist with segments."""
+    from starlette.testclient import TestClient
+    from app.main import app
+    from app.routes.xtream import _vod_cache_by_id
+    from app.providers.manager import provider_manager
+
+    _vod_cache_by_id[39998] = {
+        "id": "movie.mock2",
+        "title": "Mock Movie 2",
+        "duration": 60,  # 60s -> 6 segments of 10s
+        "payload": {"contentId": "movie.mock2"}
+    }
+
+    # Mock get_vod_stream to return DRM stream
+    monkeypatch.setattr(
+        provider_manager.oneplay,
+        "get_vod_stream",
+        lambda payload: {"manifest_type": "mpd", "url": "https://cdn.mock/dash.mpd", "is_drm": True}
+    )
+
+    client = TestClient(app)
+    resp = client.get("/movie/sweettv/sweet/39998.m3u8")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.apple.mpegurl"
+    text = resp.text
+    assert "#EXTM3U" in text
+    assert "#EXT-X-PLAYLIST-TYPE:VOD" in text
+    assert "#EXT-X-ENDLIST" in text
+    assert "/vod_segment/sweettv/sweet/39998/0.ts" in text
+    assert "/vod_segment/sweettv/sweet/39998/10.ts" in text
+    assert "/vod_segment/sweettv/sweet/39998/50.ts" in text
+
+

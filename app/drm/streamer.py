@@ -283,12 +283,14 @@ async def ffmpeg_stream_generator(
     headers: Optional[Dict[str, str]] = None,
     output_format: str = "ts",
     duration_secs: Optional[float] = None,
-    chunk_size: int = 65536
+    start_time: float = 0.0,
+    chunk_size: int = 524288
 ) -> AsyncGenerator[bytes, None]:
     """
     Spawns modern FFmpeg to decrypt and remux a DASH/HLS CENC stream on-the-fly
     into a standard MPEG-TS or fragmented MP4 byte stream without re-encoding (-c copy).
     Preserves all audio streams, language codes (defaulting to Czech 'ces'), and subtitles.
+    Supports seek offsets via start_time parameter (-ss).
     Injects presentation duration into initial MP4 moov atom so players report full length.
     """
     ffmpeg_bin = find_ffmpeg_binary()
@@ -351,6 +353,10 @@ async def ffmpeg_stream_generator(
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
     ]
 
+    # Fast input seek if start_time specified (seconds)
+    if start_time > 0:
+        cmd.extend(["-ss", f"{start_time:.2f}"])
+
     # Only pass HTTP protocol headers/user_agent if input target is an HTTP(S) URL
     if input_target.startswith("http://") or input_target.startswith("https://"):
         cmd.extend(["-user_agent", ua])
@@ -405,7 +411,7 @@ async def ffmpeg_stream_generator(
 
     logger.info(
         f"Starting FFmpeg DRM streaming ({ffmpeg_bin}) -> format={output_format}, "
-        f"keys={len(valid_keys)}, audio_tracks={len(audio_languages)}, duration={target_duration}s..."
+        f"start_time={start_time:.2f}s, keys={len(valid_keys)}, audio_tracks={len(audio_languages)}, duration={target_duration}s..."
     )
     proc = None
     stderr_lines = []
