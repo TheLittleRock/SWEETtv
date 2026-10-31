@@ -446,10 +446,6 @@ async def ffmpeg_stream_generator(
         "-loglevel", "warning",
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
-        "-reconnect", "1",
-        "-reconnect_at_eof", "1",
-        "-reconnect_streamed", "1",
-        "-reconnect_delay_max", "2",
         "-probesize", "10000000",
         "-analyzeduration", "10000000",
         "-threads", "0",
@@ -459,9 +455,15 @@ async def ffmpeg_stream_generator(
     if start_time > 0:
         cmd.extend(["-ss", f"{start_time:.2f}"])
 
-    # Only pass HTTP protocol headers/user_agent if input target is an HTTP(S) URL
+    # Only pass HTTP protocol headers/user_agent and reconnect options if input target is an HTTP(S) URL
     if input_target.startswith("http://") or input_target.startswith("https://"):
-        cmd.extend(["-user_agent", ua])
+        cmd.extend([
+            "-reconnect", "1",
+            "-reconnect_at_eof", "1",
+            "-reconnect_streamed", "1",
+            "-reconnect_delay_max", "2",
+            "-user_agent", ua,
+        ])
         if header_str:
             cmd.extend(["-headers", header_str])
 
