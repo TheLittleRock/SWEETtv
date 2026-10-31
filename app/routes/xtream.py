@@ -106,7 +106,7 @@ async def player_api(
                 "active_cons": "0",
                 "created_at": "1600000000",
                 "max_connections": "5",
-                "allowed_output_formats": ["m3u8", "ts"]
+                "allowed_output_formats": ["m3u8", "ts", "mp4"]
             },
             "server_info": {
                 "url": host,
@@ -202,8 +202,8 @@ async def player_api(
                 if target_ch:
                     raw_progs = provider_manager.oneplay.get_channel_epg(target_ch["id"])
                     for p in raw_progs:
-                        t_start = p.get("time_start", 0)
-                        t_stop = p.get("time_stop", 0)
+                        t_start = p.get("start") or p.get("time_start") or p.get("startts") or 0
+                        t_stop = p.get("stop") or p.get("time_stop") or p.get("endts") or 0
                         if not t_start or not t_stop:
                             continue
                         listings.append({
@@ -288,7 +288,7 @@ async def player_api(
                     "rating_5based": 3.75,
                     "added": "1600000000",
                     "category_id": cat_filter or "3000",
-                    "container_extension": "ts",
+                    "container_extension": "mp4",
                     "custom_sid": "",
                     "direct_source": ""
                 })
@@ -344,7 +344,7 @@ async def player_api(
             "movie_data": {
                 "stream_id": vid,
                 "name": name,
-                "container_extension": "ts"
+                "container_extension": "mp4"
             }
         })
 
@@ -454,7 +454,7 @@ async def player_api(
                         "id": ep_sid,
                         "episode_num": ep_num,
                         "title": ep.get("title", f"Díl {ep_num}"),
-                        "container_extension": "ts",
+                        "container_extension": "mp4",
                         "info": {
                             "name": ep.get("title", ""),
                             "plot": ep.get("description", ""),
@@ -490,7 +490,7 @@ async def player_api(
                     "id": ep_sid,
                     "episode_num": ep_num,
                     "title": ep.get("title", f"Díl {ep_num}"),
-                    "container_extension": "ts",
+                    "container_extension": "mp4",
                     "info": {
                         "name": ep.get("title", ""),
                         "plot": ep.get("description", ""),
@@ -665,6 +665,27 @@ def xtream_timeshift_stream(
     )
 
 
+@router.api_route("/xmltv.php", methods=["GET"])
+def xtream_xmltv(
+    request: Request,
+    username: Optional[str] = Query(None),
+    password: Optional[str] = Query(None)
+):
+    """Universal XMLTV EPG endpoint for Xtream Codes IPTV players."""
+    if username and password and not validate_xtream_user(username, password):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+    xml_content = provider_manager.generate_xmltv_epg()
+    return Response(
+        content=xml_content,
+        media_type="text/xml; charset=utf-8",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Content-Disposition": 'inline; filename="epg.xml"',
+            "Cache-Control": "public, max-age=1800"
+        }
+    )
+
+
 # =========================================================================
 # XTREAM CODES VOD & SERIES PLAYBACK ENDPOINTS
 # =========================================================================
@@ -688,15 +709,20 @@ async def xtream_movie_stream(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid stream ID.")
 
-    # Fast probe response for HEAD requests from IPTV players (e.g. TiviMate, VLC)
+    is_mp4 = request.url.path.endswith(".mp4")
+    out_format = "mp4" if is_mp4 else "ts"
+    media_type = "video/mp4" if is_mp4 else "video/mp2t"
+    file_ext = "mp4" if is_mp4 else "ts"
+
+    # Fast probe response for HEAD requests from IPTV players (e.g. TiviMate, VLC, IPTVnator)
     if request.method == "HEAD":
         return Response(
             status_code=200,
-            media_type="video/mp2t",
+            media_type=media_type,
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Content-Disposition": f'inline; filename="vod_{sid_int}.ts"'
+                "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"'
             }
         )
 
@@ -800,7 +826,7 @@ async def xtream_movie_stream(
             except Exception as e:
                 logger.error(f"Error acquiring DRM keys for VOD stream {sid_int}: {e}")
 
-        # Stream clear MPEG-TS directly via FFmpeg with token-propagated MPD
+        # Stream clear MPEG-TS or fragmented MP4 directly via FFmpeg
         headers_dict = {
             "User-Agent": provider_manager.oneplay.api.ua,
             "Referer": "https://www.oneplay.cz/"
@@ -808,15 +834,16 @@ async def xtream_movie_stream(
         generator = ffmpeg_stream_generator(
             stream_url=stream_url,
             decryption_keys=decryption_keys,
-            headers=headers_dict
+            headers=headers_dict,
+            output_format=out_format
         )
         return StreamingResponse(
             content=generator,
-            media_type="video/mp2t",
+            media_type=media_type,
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Content-Disposition": f'inline; filename="vod_{sid_int}.ts"'
+                "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"'
             }
         )
 

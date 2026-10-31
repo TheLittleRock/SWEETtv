@@ -1118,8 +1118,8 @@ function renderVodGrid(items) {
     if (!gridEl) return;
 
     gridEl.innerHTML = items.map((item, idx) => {
-        const isSeries = item.content_type === "show" || item.content_type === "series" || activeVodCategory === "series";
-        const isRecording = item.content_type === "recording" || activeVodCategory === "recordings";
+        const isSeries = item.content_type === "show" || item.content_type === "series";
+        const isRecording = item.content_type === "recording";
         const posterUrl = item.image || "https://staticeu.sweet.tv/images/v2/icons/categories/1000.png";
         const typeBadge = isSeries ? "Seriál" : (isRecording ? "Nahrávka" : "Film");
         const typeBadgeClass = isSeries ? "bg-purple-950 text-purple-300 border-purple-800" : (isRecording ? "bg-amber-950 text-amber-300 border-amber-800" : "bg-blue-950 text-blue-300 border-blue-800");
@@ -1156,7 +1156,7 @@ function handleVodClick(itemIdx) {
     const item = currentVodItems[itemIdx];
     if (!item) return;
 
-    const isSeries = item.content_type === "show" || item.content_type === "series" || (activeVodCategory === "series" && item.content_type !== "movie");
+    const isSeries = item.content_type === "show" || item.content_type === "series";
     if (isSeries) {
         openSeriesModal(item);
     } else {

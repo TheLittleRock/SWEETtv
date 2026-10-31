@@ -2,6 +2,7 @@ import gzip
 import logging
 import threading
 import time
+from datetime import datetime
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -199,11 +200,11 @@ class ProviderManager:
                         if not start_iso or not end_iso:
                             continue
                         try:
-                            # Convert ISO to XMLTV format
-                            dt_start = time.strptime(start_iso[:19], "%Y-%m-%dT%H:%M:%S")
-                            dt_end = time.strptime(end_iso[:19], "%Y-%m-%dT%H:%M:%S")
-                            start_str = time.strftime("%Y%m%d%H%M%S +0000", dt_start)
-                            stop_str = time.strftime("%Y%m%d%H%M%S +0000", dt_end)
+                            # Convert ISO to XMLTV format preserving actual timezone offset
+                            dt_start = datetime.fromisoformat(start_iso)
+                            dt_end = datetime.fromisoformat(end_iso)
+                            start_str = dt_start.strftime("%Y%m%d%H%M%S %z")
+                            stop_str = dt_end.strftime("%Y%m%d%H%M%S %z")
 
                             prog = ET.SubElement(xml_root, "programme", attrib={"start": start_str, "stop": stop_str, "channel": tvg_id})
                             ET.SubElement(prog, "title", lang="cs").text = item.get("title", "")

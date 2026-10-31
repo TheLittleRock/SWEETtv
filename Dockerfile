@@ -5,18 +5,19 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SWEETTV_DATA_DIR=/app/data \
     HOST=0.0.0.0 \
-    PORT=5000
+    PORT=5000 \
+    TZ=Europe/Prague
 
 WORKDIR /app
 
-# Install curl, certificates, and modern static FFmpeg 7 with CENC decryption support
+# Install curl, certificates, tzdata, and modern static FFmpeg from BtbN (OpenSSL, CENC DASH)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates tzdata tar xz-utils ffmpeg && \
+    apt-get install -y --no-install-recommends curl ca-certificates tzdata tar xz-utils && \
     ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
-        curl -fsSL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz | tar -xJ --strip-components=1 -C /usr/local/bin/ ffmpeg-*-amd64-static/ffmpeg ffmpeg-*-amd64-static/ffprobe 2>/dev/null || true; \
+        curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz | tar -xJ --strip-components=2 -C /usr/local/bin/ --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'; \
     elif [ "$ARCH" = "arm64" ]; then \
-        curl -fsSL https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz | tar -xJ --strip-components=1 -C /usr/local/bin/ ffmpeg-*-arm64-static/ffmpeg ffmpeg-*-arm64-static/ffprobe 2>/dev/null || true; \
+        curl -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz | tar -xJ --strip-components=2 -C /usr/local/bin/ --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'; \
     fi && \
     chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe 2>/dev/null || true && \
     rm -rf /var/lib/apt/lists/*

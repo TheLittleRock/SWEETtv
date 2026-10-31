@@ -15,10 +15,10 @@ DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101
 
 
 def find_ffmpeg_binary() -> Optional[str]:
-    """Finds the best available FFmpeg binary (preferring static FFmpeg 7+ builds)."""
+    """Finds the best available FFmpeg binary (preferring static FFmpeg builds)."""
     candidates = [
         "/usr/local/bin/ffmpeg",
-        "/tmp/ffstatic/ffmpeg",
+        os.path.expanduser("~/.local/bin/ffmpeg"),
         shutil.which("ffmpeg")
     ]
     for c in candidates:
@@ -30,13 +30,10 @@ def find_ffmpeg_binary() -> Optional[str]:
 def rewrite_mpd_tokens(mpd_content: str, base_url: str) -> str:
     """
     Rewrites MPD manifest to propagate CDN query authentication tokens (e.g. ?token=...)
-    to all SegmentTemplate initialization and media attributes, and ensures valid BaseURL.
+    to all SegmentTemplate initialization and media attributes, and ensures valid absolute BaseURL.
     """
     parsed_base = urllib.parse.urlparse(base_url)
     query_str = parsed_base.query
-    if not query_str:
-        return mpd_content
-
     base_dir = base_url.split("?")[0].rsplit("/", 1)[0] + "/"
 
     # Register XML namespaces
@@ -48,29 +45,30 @@ def rewrite_mpd_tokens(mpd_content: str, base_url: str) -> str:
     try:
         root = ET.fromstring(mpd_content)
 
-        # Ensure BaseURL points to the CDN directory with auth query token
+        # Ensure BaseURL points to the absolute CDN directory with auth query token if any
         ns = {"mpd": "urn:mpeg:dash:schema:mpd:2011"}
         base_elem = root.find("mpd:BaseURL", ns)
         if base_elem is None:
             base_elem = ET.Element("{urn:mpeg:dash:schema:mpd:2011}BaseURL")
-            base_elem.text = f"{base_dir}?{query_str}"
+            base_elem.text = f"{base_dir}?{query_str}" if query_str else base_dir
             root.insert(0, base_elem)
         else:
             if base_elem.text and not base_elem.text.startswith("http"):
                 base_elem.text = urllib.parse.urljoin(base_dir, base_elem.text)
-            if base_elem.text and query_str not in base_elem.text:
+            if query_str and base_elem.text and query_str not in base_elem.text:
                 sep = "&" if "?" in base_elem.text else "?"
                 base_elem.text = f"{base_elem.text}{sep}{query_str}"
 
-        # Propagate token to segment templates
-        for elem in root.iter():
-            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            if tag in ("SegmentTemplate", "Initialization", "SegmentURL"):
-                for attr in ("initialization", "media", "sourceURL"):
-                    val = elem.get(attr)
-                    if val and query_str not in val:
-                        sep = "&" if "?" in val else "?"
-                        elem.set(attr, f"{val}{sep}{query_str}")
+        # Propagate token to segment templates if query_str present
+        if query_str:
+            for elem in root.iter():
+                tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+                if tag in ("SegmentTemplate", "Initialization", "SegmentURL"):
+                    for attr in ("initialization", "media", "sourceURL"):
+                        val = elem.get(attr)
+                        if val and query_str not in val:
+                            sep = "&" if "?" in val else "?"
+                            elem.set(attr, f"{val}{sep}{query_str}")
 
         return ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
     except Exception as e:
@@ -78,7 +76,7 @@ def rewrite_mpd_tokens(mpd_content: str, base_url: str) -> str:
         def _append_token(match):
             attr_name = match.group(1)
             url_val = match.group(2)
-            if query_str not in url_val:
+            if query_str and query_str not in url_val:
                 sep = "&" if "?" in url_val else "?"
                 url_val = f"{url_val}{sep}{query_str}"
             return f'{attr_name}="{url_val}"'
@@ -91,11 +89,12 @@ async def ffmpeg_stream_generator(
     stream_url: str,
     decryption_keys: List[str],
     headers: Optional[Dict[str, str]] = None,
+    output_format: str = "ts",
     chunk_size: int = 65536
 ) -> AsyncGenerator[bytes, None]:
     """
     Spawns modern FFmpeg to decrypt and remux a DASH/HLS CENC stream on-the-fly
-    into a standard MPEG-TS byte stream without re-encoding (-c copy).
+    into a standard MPEG-TS or fragmented MP4 byte stream without re-encoding (-c copy).
     Propagates CDN query tokens to relative segments to eliminate 403 Forbidden errors.
     """
     ffmpeg_bin = find_ffmpeg_binary()
@@ -117,8 +116,9 @@ async def ffmpeg_stream_generator(
     temp_mpd_path: Optional[str] = None
     input_target = stream_url
 
-    # For DASH manifests, fetch and rewrite MPD to propagate CDN auth tokens to segments
-    if ".mpd" in stream_url.lower():
+    # For DASH manifests with query tokens, fetch and rewrite MPD with absolute BaseURL
+    parsed_u = urllib.parse.urlparse(stream_url)
+    if ".mpd" in stream_url.lower() and parsed_u.query:
         try:
             h = {"User-Agent": ua}
             for hdr in custom_headers:
@@ -149,20 +149,28 @@ async def ffmpeg_stream_generator(
     if header_str:
         cmd.extend(["-headers", header_str])
 
-    # Pass all available decryption keys using both cenc_decryption_key and decryption_key
+    # Pass all available decryption keys using cenc_decryption_key
     valid_keys = [k for k in decryption_keys if k and len(k) == 32]
-    for key in valid_keys:
-        cmd.extend(["-cenc_decryption_key", key, "-decryption_key", key])
+    if valid_keys:
+        cmd.extend(["-cenc_decryption_key", valid_keys[0]])
 
     # Input target
     cmd.extend(["-i", input_target])
 
-    # Passthrough copy to MPEG-TS container
-    cmd.extend([
-        "-c", "copy",
-        "-f", "mpegts",
-        "pipe:1"
-    ])
+    # Passthrough copy to requested container format
+    if output_format.lower() == "mp4":
+        cmd.extend([
+            "-c", "copy",
+            "-f", "mp4",
+            "-movflags", "frag_keyframe+empty_moov+default_base_moof",
+            "pipe:1"
+        ])
+    else:
+        cmd.extend([
+            "-c", "copy",
+            "-f", "mpegts",
+            "pipe:1"
+        ])
 
     logger.info(f"Starting FFmpeg DRM streaming process ({ffmpeg_bin}) with {len(valid_keys)} key(s)...")
     proc = None

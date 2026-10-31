@@ -134,3 +134,63 @@ def test_get_series_detail_ignores_similar_titles():
     # Episodes MUST be empty because "Podobné tituly" is not an episode carousel!
     assert len(detail["episodes"]) == 0
     assert len(detail["seasons"]) == 0
+
+
+def test_get_season_episodes_nested_criteria_id():
+    provider = OneplayProvider()
+    provider.ensure_authenticated = MagicMock(return_value=True)
+
+    # Tile with nested criteria.contentId (like Robin Hood)
+    mock_tiles = [
+        {
+            "id": None,
+            "title": "1. díl - Vidím ho",
+            "description": "Popis",
+            "duration": 3600,
+            "action": {
+                "params": {
+                    "payload": {"criteria": {"schema": "ContentCriteria", "contentId": "episode.3308377"}}
+                }
+            }
+        }
+    ]
+    provider.api.call_api = MagicMock(return_value={
+        "status": "success",
+        "data": {"carousel": {"tiles": mock_tiles}}
+    })
+
+    eps = provider.get_season_episodes("show:258795", "season:100478")
+    assert len(eps) == 1
+    assert eps[0]["id"] == "episode.3308377"
+    assert eps[0]["id"] != "None"
+
+
+def test_vod_categories_correct_mapping():
+    provider = OneplayProvider()
+    provider.ensure_authenticated = MagicMock(return_value=True)
+
+    # Mock app.init menu
+    mock_init = {
+        "menu": {
+            "groups": [
+                {
+                    "position": "top",
+                    "items": [
+                        {"id": "1", "title": "Domů", "action": {"call": "page.category.display", "params": {"payload": {"categoryId": "1"}}}},
+                        {"id": "4", "title": "Pořady", "action": {"call": "page.category.display", "params": {"payload": {"categoryId": "4"}}}},
+                        {"id": "2", "title": "Filmy", "action": {"call": "page.category.display", "params": {"payload": {"categoryId": "2"}}}},
+                        {"id": "8", "title": "Můj seznam", "action": {"call": "page.category.display", "params": {"payload": {"categoryId": "8"}}}},
+                    ]
+                }
+            ]
+        }
+    }
+    provider.api.call_api = MagicMock(return_value={"status": "success", "data": mock_init})
+
+    cats = provider.get_vod_categories()
+    cat_by_id = {c["id"]: c for c in cats}
+
+    assert cat_by_id["movies"]["categoryId"] == "2"
+    assert cat_by_id["series"]["categoryId"] == "4"
+    assert cat_by_id["recordings"]["categoryId"] == "8"
+    assert cat_by_id["all"]["categoryId"] == "1"

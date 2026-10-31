@@ -529,8 +529,10 @@ class OneplayProvider(BaseProvider):
                     end_val = int(q["end"][0])
                     new_begin = min(new_begin, end_val - 1)
                 stream_url = re.sub(r'([?&]begin=)[^&#]*', rf'\g<1>{new_begin}', stream_url, count=1)
+                stream_url = re.sub(r'([?&]ateme_date_begin=)[^&#]*', rf'\g<1>{new_begin}', stream_url, count=1)
             else:
                 stream_url = re.sub(r'([?&]begin=)[^&#]*', rf'\g<1>{int(utc_time)}', stream_url, count=1)
+                stream_url = re.sub(r'([?&]ateme_date_begin=)[^&#]*', rf'\g<1>{int(utc_time)}', stream_url, count=1)
 
         return {
             "master_url": stream_url,
@@ -809,9 +811,9 @@ class OneplayProvider(BaseProvider):
     def get_vod_categories(self) -> List[Dict[str, Any]]:
         """Returns top-level VOD categories."""
         default_cats = [
-            {"id": "all", "title": "⭐ Vše", "categoryId": "2"},
+            {"id": "all", "title": "⭐ Vše", "categoryId": "1"},
             {"id": "movies", "title": "🎬 Filmy", "categoryId": "2"},
-            {"id": "series", "title": "📺 Seriály", "categoryId": "1"},
+            {"id": "series", "title": "📺 Seriály", "categoryId": "4"},
             {"id": "recordings", "title": "📼 Nahrávky (Cloud DVR)", "categoryId": "8"},
         ]
         if not self.ensure_authenticated():
@@ -821,22 +823,24 @@ class OneplayProvider(BaseProvider):
         try:
             init_res = self.api.call_api("app.init", data={"payload": {"reason": "start"}}, token=token)
             init_data = init_res.get("data") or init_res.get("result", {}).get("data") or {}
-            cats = [{"id": "all", "title": "⭐ Vše", "categoryId": "2"}]
+            cats = [{"id": "all", "title": "⭐ Vše", "categoryId": "1"}]
             for group in (init_data.get("menu", {}).get("groups") or []):
                 if group.get("position") == "top":
                     for item in (group.get("items") or []):
                         action = item.get("action", {})
                         if action.get("call") == "page.category.display":
                             p = action.get("params", {}).get("payload") or {}
-                            cat_id = p.get("categoryId") or item.get("id")
+                            cat_id = str(p.get("categoryId") or item.get("id"))
+                            title = item.get("title", f"Kategorie {cat_id}")
+                            ui_id = "movies" if cat_id == "2" else ("series" if cat_id == "4" else ("recordings" if cat_id == "8" else cat_id))
                             cats.append({
-                                "id": str(cat_id),
-                                "title": item.get("title", f"Kategorie {cat_id}"),
-                                "categoryId": str(cat_id),
+                                "id": ui_id,
+                                "title": title,
+                                "categoryId": cat_id,
                             })
             if len(cats) > 1:
                 if not any(c.get("categoryId") == "8" or c["id"] == "recordings" for c in cats):
-                    cats.append({"id": "8", "title": "📼 Nahrávky (Cloud DVR)", "categoryId": "8"})
+                    cats.append({"id": "recordings", "title": "📼 Nahrávky (Cloud DVR)", "categoryId": "8"})
                 return cats
         except Exception as e:
             logger.warning(f"Error fetching Oneplay categories via app.init: {e}")
@@ -868,55 +872,68 @@ class OneplayProvider(BaseProvider):
                 for c in carousels:
                     items.extend(self._parse_tiles(c.get("tiles") or []))
             else:
-                cat_id = "2" if category == "movies" else ("1" if category == "series" else ("8" if category == "recordings" else category))
-                if cat_id in ("all", ""):
-                    cat_id = "2"
+                target_cats = []
+                if category == "movies":
+                    target_cats = ["2"]
+                    if all_pages:
+                        target_cats.append("6")  # Include kids movies for full catalog indexing
+                elif category == "series":
+                    target_cats = ["4"]
+                    if all_pages:
+                        target_cats.append("6")  # Include kids series for full catalog indexing
+                elif category == "recordings":
+                    target_cats = ["8"]
+                elif category in ("all", ""):
+                    target_cats = ["1"]
+                else:
+                    target_cats = [category]
 
-                res = self.api.call_api("page.category.display", data={"payload": {"categoryId": str(cat_id)}}, token=token)
-                data = res.get("data") or res.get("result", {}).get("data") or []
-                blocks = data if isinstance(data, list) else (data.get("layout", {}).get("blocks") or [])
+                for cat_id in target_cats:
+                    res = self.api.call_api("page.category.display", data={"payload": {"categoryId": str(cat_id)}}, token=token)
+                    data = res.get("data") or res.get("result", {}).get("data") or []
+                    blocks = data if isinstance(data, list) else (data.get("layout", {}).get("blocks") or [])
 
-                all_carousels = self._find_all_carousels(blocks)
-                for c in all_carousels:
-                    c_tiles = c.get("tiles") or []
-                    items.extend(self._parse_tiles(c_tiles))
-                    paging = c.get("paging") or {}
+                    all_carousels = self._find_all_carousels(blocks)
+                    for c in all_carousels:
+                        c_tiles = c.get("tiles") or []
+                        items.extend(self._parse_tiles(c_tiles))
+                        paging = c.get("paging") or {}
 
-                    # If all_pages is requested (e.g. for Xtream catalog indexing), paginate carousels
-                    if all_pages and paging.get("criteria"):
-                        pos = len(c_tiles) + 1
-                        while pos <= 300:
+                        # If all_pages is requested (e.g. for Xtream catalog indexing), paginate carousels
+                        if all_pages and paging.get("criteria"):
+                            pos = len(c_tiles) + 1
+                            while pos <= 2000:
+                                c_post = {
+                                    "payload": {
+                                        "criteria": paging.get("criteria"),
+                                        "carouselId": c.get("id"),
+                                        "paging": {"count": 24, "position": pos}
+                                    }
+                                }
+                                c_res = self.api.call_api("carousel.display", data=c_post, token=token)
+                                c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
+                                c_more_tiles = c_data.get("tiles") or []
+                                if not c_more_tiles:
+                                    break
+                                items.extend(self._parse_tiles(c_more_tiles))
+                                if not c_data.get("paging", {}).get("next") or len(c_more_tiles) < 24:
+                                    break
+                                pos += len(c_more_tiles)
+                        elif page > 1 and paging.get("criteria"):
                             c_post = {
                                 "payload": {
                                     "criteria": paging.get("criteria"),
                                     "carouselId": c.get("id"),
-                                    "paging": {"count": 24, "position": pos}
+                                    "paging": {"count": 24, "position": (page - 1) * 24 + 1}
                                 }
                             }
                             c_res = self.api.call_api("carousel.display", data=c_post, token=token)
                             c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
                             c_more_tiles = c_data.get("tiles") or []
-                            if not c_more_tiles:
-                                break
                             items.extend(self._parse_tiles(c_more_tiles))
-                            if not c_data.get("paging", {}).get("next") or len(c_more_tiles) < 24:
-                                break
-                            pos += len(c_more_tiles)
-                    elif page > 1 and paging.get("criteria"):
-                        c_post = {
-                            "payload": {
-                                "criteria": paging.get("criteria"),
-                                "carouselId": c.get("id"),
-                                "paging": {"count": 24, "position": (page - 1) * 24 + 1}
-                            }
-                        }
-                        c_res = self.api.call_api("carousel.display", data=c_post, token=token)
-                        c_data = c_res.get("data") or c_res.get("result", {}).get("data") or {}
-                        c_more_tiles = c_data.get("tiles") or []
-                        items.extend(self._parse_tiles(c_more_tiles))
-                        has_more = bool(c_data.get("paging", {}).get("next"))
-                    else:
-                        has_more = bool(paging.get("next")) or has_more
+                            has_more = bool(c_data.get("paging", {}).get("next"))
+                        else:
+                            has_more = bool(paging.get("next")) or has_more
 
         except Exception as e:
             logger.error(f"Error fetching Oneplay VOD items: {e}")
@@ -1136,8 +1153,9 @@ class OneplayProvider(BaseProvider):
                 params = tile.get("action", {}).get("params") or {}
                 payload = params.get("payload") or {}
                 poster = self._extract_image_url(tile.get("image"), 480, 270)
+                content_id = payload.get("contentId") or (payload.get("criteria", {}) or {}).get("contentId") or tile.get("id") or os.urandom(6).hex()
                 episodes.append({
-                    "id": str(payload.get("contentId") or tile.get("id")),
+                    "id": str(content_id),
                     "title": tile.get("title", ""),
                     "description": tile.get("description") or tile.get("subTitle") or "",
                     "duration": tile.get("duration", 0),
