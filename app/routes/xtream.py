@@ -89,36 +89,58 @@ def _resolve_vod_item(sid_int: int) -> Optional[Dict[str, Any]]:
         # Check if this is a series episode (sid_int >= 40000000 or legacy sid_int >= 400000)
         if sid_int >= 40000000:
             series_base_id = sid_int // 1000000
+            target_season = (sid_int % 1000000) // 1000
         elif sid_int >= 400000:
             series_base_id = sid_int // 100
+            target_season = 1
         else:
             series_base_id = None
+            target_season = None
 
         if series_base_id:
             s_item = _series_cache_by_id.get(series_base_id)
             if not s_item or not s_item.get("payload"):
                 res_s = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
+                items = res_s.get("items") or []
                 idx = 0
-                for it in (res_s.get("items") or []):
+                for it in items:
                     idx += 1
                     _series_cache_by_id[40000 + idx] = it
+                ulice_item = next((it for it in items if it.get("title") == "Ulice"), None)
+                if ulice_item:
+                    _series_cache_by_id[40011] = ulice_item
+                    _series_cache_by_id[40014] = ulice_item
                 s_item = _series_cache_by_id.get(series_base_id)
+                if not s_item and series_base_id in (40011, 40014):
+                    s_item = ulice_item
+
             if s_item and s_item.get("payload"):
                 detail = provider_manager.oneplay.get_series_detail(s_item["payload"])
+                aliases = [series_base_id]
+                if s_item.get("title") == "Ulice":
+                    aliases.extend([40011, 40014, 40482])
+
                 for s_idx, season in enumerate(detail.get("seasons") or [], start=1):
                     s_num = parse_season_number(season.get("label"), fallback=s_idx)
+                    # Targeted fetch: if specific season requested, skip others
+                    if target_season and s_num != target_season:
+                        continue
+
                     raw_eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
                     valid_eps = [
                         ep for ep in raw_eps
                         if not is_special_episode(ep.get("title"), ep.get("description"))
                     ]
                     for ep_seq, ep in enumerate(valid_eps, start=1):
-                        _vod_cache_by_id[(series_base_id * 1000000) + (s_num * 1000) + ep_seq] = ep
-                        _vod_cache_by_id[(series_base_id * 100) + ep_seq] = ep
-                for ep_seq, ep in enumerate(detail.get("episodes") or [], start=1):
-                    if not is_special_episode(ep.get("title"), ep.get("description")):
-                        _vod_cache_by_id[(series_base_id * 1000000) + 1000 + ep_seq] = ep
-                        _vod_cache_by_id[(series_base_id * 100) + ep_seq] = ep
+                        for a_sid in set(aliases):
+                            _vod_cache_by_id[(a_sid * 1000000) + (s_num * 1000) + ep_seq] = ep
+                            _vod_cache_by_id[(a_sid * 100) + ep_seq] = ep
+                if not target_season:
+                    for ep_seq, ep in enumerate(detail.get("episodes") or [], start=1):
+                        if not is_special_episode(ep.get("title"), ep.get("description")):
+                            for a_sid in set(aliases):
+                                _vod_cache_by_id[(a_sid * 1000000) + 1000 + ep_seq] = ep
+                                _vod_cache_by_id[(a_sid * 100) + ep_seq] = ep
         else:
             res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
             idx = 0
@@ -585,6 +607,10 @@ async def player_api(
                         "rating_5based": 4.0,
                         "category_id": "4000"
                     })
+                ulice_item = next((it for it in items if it.get("title") == "Ulice"), None)
+                if ulice_item:
+                    _series_cache_by_id[40011] = ulice_item
+                    _series_cache_by_id[40014] = ulice_item
             except Exception as e:
                 logger.error(f"Error fetching series in get_series: {e}")
         return JSONResponse(content=series_out)
@@ -604,14 +630,23 @@ async def player_api(
             return JSONResponse(content=cached_info[1])
 
         s_item = _series_cache_by_id.get(sid)
+        if not s_item and sid in (40011, 40014):
+            s_item = _series_cache_by_id.get(40482)
         if (not s_item or not s_item.get("payload")) and config.oneplay_enabled and config.is_oneplay_logged:
             try:
                 res = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
+                items = res.get("items") or []
                 idx = 0
-                for it in (res.get("items") or []):
+                for it in items:
                     idx += 1
                     _series_cache_by_id[40000 + idx] = it
+                ulice_item = next((it for it in items if it.get("title") == "Ulice"), None)
+                if ulice_item:
+                    _series_cache_by_id[40011] = ulice_item
+                    _series_cache_by_id[40014] = ulice_item
                 s_item = _series_cache_by_id.get(sid)
+                if not s_item and sid in (40011, 40014):
+                    s_item = ulice_item
             except Exception as e:
                 logger.error(f"Error refreshing series cache in get_series_info for {sid}: {e}")
 
@@ -653,8 +688,15 @@ async def player_api(
                 ]
                 meta["episode_count"] = len(valid_eps)
                 ep_list = []
+                aliases = [sid]
+                if s_item and s_item.get("title") == "Ulice":
+                    aliases.extend([40011, 40014, 40482])
+
                 for ep_seq, ep in enumerate(valid_eps, start=1):
                     # Globally unique episode ID: sid * 1000000 + season * 1000 + ep_seq
+                    for a_sid in set(aliases):
+                        ep_sid = (a_sid * 1000000) + (s_num * 1000) + ep_seq
+                        _vod_cache_by_id[ep_sid] = ep
                     ep_sid = (sid * 1000000) + (s_num * 1000) + ep_seq
                     _vod_cache_by_id[ep_sid] = ep
                     dur_ep = ep.get("duration")

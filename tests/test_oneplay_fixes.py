@@ -331,3 +331,64 @@ async def test_xtream_vod_segment_zero_omits_ss(monkeypatch):
     ss_idx = cmd1.index("-ss")
     assert cmd1[ss_idx + 1] == "7.5"
 
+
+def test_resolve_vod_item_ulice_alias_and_targeted_season(monkeypatch):
+    from app.routes import xtream
+
+    xtream._vod_cache_by_id.clear()
+    xtream._series_cache_by_id.clear()
+
+    mock_ulice = {
+        "id": "show_ulice",
+        "title": "Ulice",
+        "payload": {"contentId": "ulice_payload"}
+    }
+    mock_alvin = {
+        "id": "show_alvin",
+        "title": "Alvin a Chipmunkové",
+        "payload": {"contentId": "alvin_payload"}
+    }
+
+    fetched_seasons = []
+
+    def mock_get_vod_items(category, page=1, all_pages=False):
+        # 40001 = Alvin, 40002 = Ulice
+        return {"items": [mock_alvin, mock_ulice]}
+
+    def mock_get_series_detail(payload):
+        return {
+            "seasons": [
+                {"label": "1. série", "carouselId": "c1", "criteria": "s1"},
+                {"label": "2. série", "carouselId": "c2", "criteria": "s2"},
+            ]
+        }
+
+    def mock_get_season_episodes(carousel_id, criteria):
+        fetched_seasons.append(criteria)
+        if criteria == "s2":
+            return [
+                {"id": "ep_s2_101", "title": "Díl 101", "description": "Normální epizoda"}
+            ]
+        return [{"id": "ep_s1_1", "title": "Díl 1", "description": "Normální epizoda"}]
+
+    from app.config import ConfigManager
+    monkeypatch.setattr(ConfigManager, "oneplay_enabled", property(lambda self: True))
+    monkeypatch.setattr(ConfigManager, "is_oneplay_logged", property(lambda self: True))
+    monkeypatch.setattr(xtream.provider_manager.oneplay, "get_vod_items", mock_get_vod_items)
+    monkeypatch.setattr(xtream.provider_manager.oneplay, "get_series_detail", mock_get_series_detail)
+    monkeypatch.setattr(xtream.provider_manager.oneplay, "get_season_episodes", mock_get_season_episodes)
+
+    # Request episode for Ulice with old legacy alias 40011, Season 2, Episode 1: 40011002001
+    item = xtream._resolve_vod_item(40011002001)
+    assert item is not None
+    assert item["id"] == "ep_s2_101"
+    # Targeted season: only Season 2 was fetched!
+    assert "s2" in fetched_seasons
+    assert "s1" not in fetched_seasons
+
+    # Check aliases are all cached
+    assert xtream._vod_cache_by_id[40011002001]["id"] == "ep_s2_101"
+    assert xtream._vod_cache_by_id[40014002001]["id"] == "ep_s2_101"
+    assert xtream._vod_cache_by_id[40482002001]["id"] == "ep_s2_101"
+
+
