@@ -24,6 +24,7 @@ from app.drm.streamer import (
 )
 import re
 from app.epg import get_cached_channels
+from app.audio_cache import audio_cache_manager
 from app.providers.manager import provider_manager
 from app.routes.iptv import clean_id, get_effective_base_url
 from app.stream import build_proxy_master_m3u8, resolve_epg_id_from_utc, safe_parse_timestamp
@@ -1130,6 +1131,7 @@ async def xtream_movie_stream(
         # Audio tracks: Separate audio renditions with URI (RFC 8216)
         audio_tracks = session.get("audio_tracks") or []
         has_multi_audio = len(audio_tracks) > 1
+        ffmpeg_bin = find_ffmpeg_binary()
         for idx, a in enumerate(audio_tracks):
             is_default = "YES" if idx == 0 else "NO"
             if has_multi_audio:
@@ -1137,6 +1139,14 @@ async def xtream_movie_stream(
                 lines.append(
                     f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES,URI="{audio_m3u8_url}"'
                 )
+                if ffmpeg_bin:
+                    audio_cache_manager.start_precache(
+                        sid=sid_int,
+                        audio_idx=idx,
+                        mpd_path=session.get("mpd_path"),
+                        keys=session.get("keys", []),
+                        ffmpeg_bin=ffmpeg_bin
+                    )
             else:
                 lines.append(
                     f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT=YES,AUTOSELECT=YES'
@@ -1375,6 +1385,16 @@ async def xtream_vod_audio_m3u8(
     session = await _get_or_create_vod_session(sid_int)
     base_url = get_effective_base_url(request)
 
+    ffmpeg_bin = find_ffmpeg_binary()
+    if ffmpeg_bin:
+        audio_cache_manager.start_precache(
+            sid=sid_int,
+            audio_idx=audio_idx,
+            mpd_path=session.get("mpd_path"),
+            keys=session.get("keys", []),
+            ffmpeg_bin=ffmpeg_bin
+        )
+
     seg_duration = 6.0
     total_dur = session.get("duration", 0.0)
     if total_dur <= 0:
@@ -1440,6 +1460,40 @@ async def xtream_vod_audio_segment(
     if total_dur > 0:
         cur_dur = min(seg_duration, max(0.1, total_dur - start_sec))
 
+    audio_tracks = session.get("audio_tracks") or []
+    lang = "ces"
+    if 0 <= audio_idx < len(audio_tracks):
+        lang = audio_tracks[audio_idx].get("lang") or "ces"
+
+    # 1. Try instant slicing from local pre-cached audio file (<0.15s)
+    cached_bytes = await audio_cache_manager.get_segment(
+        sid=sid_int,
+        audio_idx=audio_idx,
+        start_sec=start_sec,
+        duration_sec=cur_dur,
+        ffmpeg_bin=ffmpeg_bin,
+        lang=lang,
+        timeout=5.0
+    )
+    if cached_bytes:
+        return Response(
+            content=cached_bytes,
+            media_type="video/mp2t",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "public, max-age=86400"
+            }
+        )
+
+    # Ensure pre-cache task is running in background if not already started
+    audio_cache_manager.start_precache(
+        sid=sid_int,
+        audio_idx=audio_idx,
+        mpd_path=mpd_path,
+        keys=session.get("keys", []),
+        ffmpeg_bin=ffmpeg_bin
+    )
+
     cmd = [
         ffmpeg_bin,
         "-hide_banner",
@@ -1458,9 +1512,7 @@ async def xtream_vod_audio_segment(
         "-map", f"0:a:{audio_idx}?",
         "-c:a", "copy",
     ])
-    audio_tracks = session.get("audio_tracks") or []
     if 0 <= audio_idx < len(audio_tracks):
-        lang = audio_tracks[audio_idx].get("lang") or "ces"
         cmd.extend(["-metadata:s:a:0", f"language={lang}"])
 
     cmd.extend([
