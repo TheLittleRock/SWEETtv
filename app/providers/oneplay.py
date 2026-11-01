@@ -9,7 +9,7 @@ import time
 import urllib.parse
 import base64
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen

@@ -109,10 +109,10 @@ def get_or_create_stream_id(
             # 3. Allocate new ID in dedicated range
             if ct == "movie":
                 base_start = 30001
-                base_end = 30999
-            elif ct == "recording":
-                base_start = 31001
                 base_end = 39999
+            elif ct == "recording":
+                base_start = 50001
+                base_end = 59999
             else:
                 base_start = 40001
                 base_end = 49999
@@ -129,17 +129,42 @@ def get_or_create_stream_id(
             while next_id in used_ids:
                 next_id += 1
 
-            conn.execute("""
-                INSERT INTO vod_catalog_mapping (stream_id, provider, external_id, content_type, title, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (next_id, provider, external_id, ct, title or "", time.time()))
-
-            logger.info(f"Assigned persistent {ct} stream_id={next_id} for '{title}' ({external_id})")
+            for attempt in range(10):
+                try:
+                    conn.execute("""
+                        INSERT INTO vod_catalog_mapping (stream_id, provider, external_id, content_type, title, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (next_id, provider, external_id, ct, title or "", time.time()))
+                    logger.info(f"Assigned persistent {ct} stream_id={next_id} for '{title}' ({external_id})")
+                    return next_id
+                except sqlite3.IntegrityError:
+                    # Check if already inserted concurrently
+                    cur.execute(
+                        "SELECT stream_id FROM vod_catalog_mapping WHERE provider = ? AND external_id = ? AND content_type = ?",
+                        (provider, external_id, ct)
+                    )
+                    r = cur.fetchone()
+                    if r:
+                        return int(r["stream_id"])
+                    next_id += 1
             return next_id
     except Exception as e:
         logger.error(f"Error getting/creating stream_id: {e}")
-        # Fallback deterministic pseudo-hash within range
-        return (30000 if ct == "movie" else (31000 if ct == "recording" else 40000)) + (abs(hash(external_id)) % 900) + 1
+        try:
+            # Re-check if already inserted
+            conn_fallback = get_db_connection()
+            cur_fb = conn_fallback.cursor()
+            cur_fb.execute(
+                "SELECT stream_id FROM vod_catalog_mapping WHERE provider = ? AND external_id = ?",
+                (provider, external_id)
+            )
+            r_fb = cur_fb.fetchone()
+            conn_fallback.close()
+            if r_fb:
+                return int(r_fb["stream_id"])
+        except Exception:
+            pass
+        return (30000 if ct == "movie" else (50000 if ct == "recording" else 40000)) + (abs(hash(external_id)) % 900) + 1
     finally:
         conn.close()
 

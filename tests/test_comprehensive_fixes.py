@@ -24,14 +24,14 @@ def test_catalog_db_persistent_ids():
 
     # Movie ID range
     m1 = get_or_create_stream_id("oneplay", "movie.1001", "movie", "Film 1")
-    assert 30001 <= m1 <= 30999
+    assert 30001 <= m1 <= 39999
     # Idempotent call returns same ID
     m1_again = get_or_create_stream_id("oneplay", "movie.1001", "movie", "Film 1")
     assert m1_again == m1
 
     # Second movie gets distinct ID
     m2 = get_or_create_stream_id("oneplay", "movie.1002", "movie", "Film 2")
-    assert 30001 <= m2 <= 30999
+    assert 30001 <= m2 <= 39999
     assert m2 != m1
 
     # Series ID range
