@@ -1001,6 +1001,8 @@ class OneplayProvider(BaseProvider):
         else:
             filtered_items = unique_items
 
+        filtered_items.sort(key=lambda x: (x.get("title") or "", str(x.get("id") or "")))
+
         return {
             "items": filtered_items,
             "page": page,

@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 from app.providers.oneplay import OneplayProvider
 from app.stream import safe_parse_timestamp
 
@@ -255,3 +255,79 @@ def test_fetch_category_filtered_items_pagination():
     titles = [it["title"] for it in items]
     assert "Spider-Man: Homecoming" in titles
     assert "Spider-Man: Bez domova" in titles
+
+
+@pytest.mark.asyncio
+async def test_xtream_vod_subs_vtt_utf8_and_timestamp_map(monkeypatch):
+    """Verifies that xtream_vod_subs_vtt preserves UTF-8 Czech characters and normalizes X-TIMESTAMP-MAP."""
+    from app.routes import xtream
+    from unittest.mock import MagicMock
+
+    raw_vtt = (
+        "WEBVTT\n"
+        "X-TIMESTAMP-MAP=MPEGTS:900000,LOCAL:00:00:00.000\n\n"
+        "1\n"
+        "00:00:39.520 --> 00:00:43.840\n"
+        "-Můžu vám pomoct?\n"
+        "Příliš žluťoučký kůň úpěl ďábelské ódy.\n"
+    ).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = raw_vtt
+
+    async def mock_vod_session(sid):
+        return {"subtitle_tracks": [{"vtt_url": "https://cdn.cra.cz/test.vtt"}]}
+
+    monkeypatch.setattr(xtream, "validate_xtream_user", lambda u, p: True)
+    monkeypatch.setattr(xtream, "_get_or_create_vod_session", mock_vod_session)
+    monkeypatch.setattr(xtream.requests, "get", lambda *args, **kwargs: mock_resp)
+
+    mock_request = MagicMock()
+    resp = await xtream.xtream_vod_subs_vtt(mock_request, "admin", "admin", "12345", 0)
+    body = resp.body.decode("utf-8")
+
+    assert "X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000" in body
+    assert "MPEGTS:900000" not in body
+    assert "Můžu vám pomoct?" in body
+    assert "Příliš žluťoučký kůň úpěl ďábelské ódy." in body
+
+
+@pytest.mark.asyncio
+async def test_xtream_vod_segment_zero_omits_ss(monkeypatch):
+    """Verifies that xtream_vod_segment omits -ss when start_sec == 0 to prevent 3s video drop."""
+    from app.routes import xtream
+    from unittest.mock import MagicMock
+
+    captured_cmds = []
+
+    async def mock_subprocess_exec(*args, **kwargs):
+        captured_cmds.append(list(args))
+        proc = MagicMock()
+        proc.communicate = AsyncMock(return_value=(b"TS_DATA", b""))
+        return proc
+
+    async def mock_vod_session(sid):
+        return {"mpd_path": "/tmp/test.mpd", "keys": ["00112233445566778899aabbccddeeff"], "duration": 1800.0}
+
+    monkeypatch.setattr(xtream, "validate_xtream_user", lambda u, p: True)
+    monkeypatch.setattr(xtream, "_get_or_create_vod_session", mock_vod_session)
+    monkeypatch.setattr(xtream, "find_ffmpeg_binary", lambda: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(xtream.asyncio, "create_subprocess_exec", mock_subprocess_exec)
+
+    mock_req = MagicMock()
+    mock_req.method = "GET"
+    mock_req.query_params = {}
+
+    # Segment 0: start_sec = 0
+    await xtream.xtream_vod_segment(mock_req, "admin", "admin", "12345", 0)
+    cmd0 = captured_cmds[0]
+    assert "-ss" not in cmd0, f"Expected no -ss for start_sec=0, got {cmd0}"
+
+    # Segment 1: start_sec = 6
+    await xtream.xtream_vod_segment(mock_req, "admin", "admin", "12345", 6)
+    cmd1 = captured_cmds[1]
+    assert "-ss" in cmd1
+    ss_idx = cmd1.index("-ss")
+    assert cmd1[ss_idx + 1] == "7.5"
+

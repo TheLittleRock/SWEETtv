@@ -1177,18 +1177,21 @@ async def xtream_vod_segment(
         cur_dur = min(seg_duration, max(0.1, total_dur - start_sec))
 
     frames_count = max(1, int(round(cur_dur * 25)))
-    seek_t = start_sec + (1.5 if start_sec > 0 else 0)
 
     cmd = [
         ffmpeg_bin,
         "-hide_banner",
         "-loglevel", "warning",
-        "-ss", str(seek_t),
+    ]
+    if start_sec > 0:
+        seek_t = start_sec + 1.5
+        cmd.extend(["-ss", str(seek_t)])
+    cmd.extend([
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
         "-probesize", "10000000",
         "-analyzeduration", "10000000",
-    ]
+    ])
     if session.get("keys"):
         cmd.extend(["-cenc_decryption_key", session["keys"][0]])
     cmd.extend([
@@ -1297,7 +1300,13 @@ async def xtream_vod_subs_vtt(
             "Origin": "https://www.oneplay.cz"
         }
         r = requests.get(vtt_url, headers=h, timeout=10)
-        vtt_content = r.text if r.status_code == 200 else "WEBVTT\n"
+        if r.status_code == 200:
+            # Decode explicitly as UTF-8 to preserve Czech characters (requests defaults to ISO-8859-1 for text/vtt)
+            vtt_content = r.content.decode("utf-8", errors="replace")
+            # Normalize HLS X-TIMESTAMP-MAP MPEGTS to 0 to align 1:1 with our MPEG-TS start time
+            vtt_content = re.sub(r"X-TIMESTAMP-MAP=MPEGTS:\d+", "X-TIMESTAMP-MAP=MPEGTS:0", vtt_content)
+        else:
+            vtt_content = "WEBVTT\n"
     except Exception as e:
         logger.error(f"Error fetching VTT from {vtt_url}: {e}")
         vtt_content = "WEBVTT\n"
