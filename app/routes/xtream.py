@@ -119,30 +119,6 @@ def _resolve_vod_item(sid_int: int) -> Optional[Dict[str, Any]]:
                     if not is_special_episode(ep.get("title"), ep.get("description")):
                         _vod_cache_by_id[(series_base_id * 1000000) + 1000 + ep_seq] = ep
                         _vod_cache_by_id[(series_base_id * 100) + ep_seq] = ep
-
-            if sid_int not in _vod_cache_by_id:
-                # Fallback: if series_base_id shifted (e.g. from index reshuffling), find matching episode in any series
-                s_num = (sid_int % 1000000) // 1000
-                ep_seq = sid_int % 1000
-                for sid_k, s_val in list(_series_cache_by_id.items()):
-                    if s_val and s_val.get("payload"):
-                        try:
-                            d = provider_manager.oneplay.get_series_detail(s_val["payload"])
-                            for s_idx, season in enumerate(d.get("seasons") or [], start=1):
-                                curr_s = parse_season_number(season.get("label"), fallback=s_idx)
-                                if curr_s == (s_num or 1):
-                                    raw_eps = provider_manager.oneplay.get_season_episodes(season["carouselId"], season["criteria"])
-                                    valid_eps = [
-                                        ep for ep in raw_eps
-                                        if not is_special_episode(ep.get("title"), ep.get("description"))
-                                    ]
-                                    if 1 <= ep_seq <= len(valid_eps):
-                                        _vod_cache_by_id[sid_int] = valid_eps[ep_seq - 1]
-                                        break
-                            if sid_int in _vod_cache_by_id:
-                                break
-                        except Exception:
-                            pass
         else:
             res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
             idx = 0
