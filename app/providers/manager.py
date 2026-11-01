@@ -2,7 +2,7 @@ import gzip
 import logging
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -176,8 +176,8 @@ class ProviderManager:
                 t_stop = item.get("time_stop", 0)
                 if not t_start or not t_stop:
                     continue
-                start_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(t_start))
-                stop_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(t_stop))
+                start_str = time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(t_start))
+                stop_str = time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(t_stop))
                 prog = ET.SubElement(xml_root, "programme", attrib={"start": start_str, "stop": stop_str, "channel": tvg_id})
                 ET.SubElement(prog, "title", lang="cs").text = item.get("text", "")
                 desc = item.get("description") or item.get("genre")
@@ -200,11 +200,11 @@ class ProviderManager:
                         if not start_iso or not end_iso:
                             continue
                         try:
-                            # Convert ISO to XMLTV format preserving actual timezone offset
-                            dt_start = datetime.fromisoformat(start_iso)
-                            dt_end = datetime.fromisoformat(end_iso)
-                            start_str = dt_start.strftime("%Y%m%d%H%M%S %z")
-                            stop_str = dt_end.strftime("%Y%m%d%H%M%S %z")
+                            # Convert ISO to XMLTV format in canonical UTC (+0000)
+                            dt_start = datetime.fromisoformat(start_iso.replace("Z", "+00:00")).astimezone(timezone.utc)
+                            dt_end = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(timezone.utc)
+                            start_str = dt_start.strftime("%Y%m%d%H%M%S +0000")
+                            stop_str = dt_end.strftime("%Y%m%d%H%M%S +0000")
 
                             prog = ET.SubElement(xml_root, "programme", attrib={"start": start_str, "stop": stop_str, "channel": tvg_id})
                             ET.SubElement(prog, "title", lang="cs").text = item.get("title", "")

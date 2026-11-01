@@ -218,8 +218,8 @@ def generate_xmltv_epg(
                 if not t_start or not t_stop:
                     continue
 
-                start_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(t_start))
-                stop_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(t_stop))
+                start_str = time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(t_start))
+                stop_str = time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(t_stop))
 
                 # Standard XMLTV attributes and catchup reference
                 attribs = {"start": start_str, "stop": stop_str, "channel": ch_id}
@@ -246,8 +246,8 @@ def generate_xmltv_epg(
                     ET.SubElement(prog_elem, "icon", src=preview_url)
         else:
             # Fallback programme block if no EPG schedule returned
-            start_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(now))
-            stop_str = time.strftime("%Y%m%d%H%M%S %z", time.localtime(now + 43200))
+            start_str = time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(now))
+            stop_str = time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(now + 43200))
 
             prog_elem = ET.SubElement(xml_root, "programme", attrib={"start": start_str, "stop": stop_str, "channel": ch_id})
             ET.SubElement(prog_elem, "title", lang=lang).text = ch.get("name", "Live Broadcast")

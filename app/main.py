@@ -21,6 +21,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SweetTV.App")
 
+import asyncio
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
@@ -47,7 +48,29 @@ async def lifespan(app: FastAPI):
         t = threading.Thread(target=prefetch, daemon=True)
         t.start()
 
-    yield
+    # Scheduled Oneplay VOD & series catalog auto-sync (1-hour interval)
+    sync_task = None
+    if config.oneplay_enabled:
+        async def oneplay_catalog_sync_loop():
+            # Initial wait 10s after startup to allow server to bind ports cleanly
+            await asyncio.sleep(10)
+            while True:
+                try:
+                    if config.is_oneplay_logged:
+                        from app.routes.xtream import sync_oneplay_vod_catalog
+                        logger.info("Executing periodic Oneplay VOD & series catalog sync...")
+                        await sync_oneplay_vod_catalog()
+                except Exception as err:
+                    logger.warning(f"Error in scheduled Oneplay catalog sync loop: {err}")
+                await asyncio.sleep(3600)
+
+        sync_task = asyncio.create_task(oneplay_catalog_sync_loop())
+
+    try:
+        yield
+    finally:
+        if sync_task:
+            sync_task.cancel()
 
 
 app = FastAPI(

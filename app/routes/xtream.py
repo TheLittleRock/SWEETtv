@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 import requests
 
 from app.auth import authenticate_user
+from app.catalog_db import get_or_create_stream_id, init_catalog_db
 from app.config import config
 from app.drm.oneplay_wv import drm_manager
 from app.drm.streamer import (
@@ -29,6 +30,8 @@ from app.stream import build_proxy_master_m3u8, resolve_epg_id_from_utc, safe_pa
 
 logger = logging.getLogger("SweetTV.Routes.Xtream")
 router = APIRouter(tags=["Xtream Codes API"])
+
+init_catalog_db()
 
 _vod_cache_by_id: Dict[int, Dict[str, Any]] = {}
 _series_cache_by_id: Dict[int, Dict[str, Any]] = {}
@@ -102,16 +105,17 @@ def _resolve_vod_item(sid_int: int) -> Optional[Dict[str, Any]]:
             if not s_item or not s_item.get("payload"):
                 res_s = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
                 items = res_s.get("items") or []
-                idx = 0
                 for it in items:
-                    idx += 1
-                    _series_cache_by_id[40000 + idx] = it
+                    ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                    sid = get_or_create_stream_id("oneplay", ext_id, "series", it.get("title"))
+                    _series_cache_by_id[sid] = it
                 ulice_item = next((it for it in items if it.get("title") == "Ulice"), None)
                 if ulice_item:
                     _series_cache_by_id[40011] = ulice_item
                     _series_cache_by_id[40014] = ulice_item
+                    _series_cache_by_id[40482] = ulice_item
                 s_item = _series_cache_by_id.get(series_base_id)
-                if not s_item and series_base_id in (40011, 40014):
+                if not s_item and series_base_id in (40011, 40014, 40482):
                     s_item = ulice_item
 
             if s_item and s_item.get("payload"):
@@ -143,19 +147,58 @@ def _resolve_vod_item(sid_int: int) -> Optional[Dict[str, Any]]:
                                 _vod_cache_by_id[(a_sid * 100) + ep_seq] = ep
         else:
             res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
-            idx = 0
             for it in (res_m.get("items") or []):
-                idx += 1
-                _vod_cache_by_id[30000 + idx] = it
+                ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                sid = get_or_create_stream_id("oneplay", ext_id, "movie", it.get("title"))
+                _vod_cache_by_id[sid] = it
             res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1, all_pages=True)
-            idx = 0
             for it in (res_r.get("items") or []):
-                idx += 1
-                _vod_cache_by_id[31000 + idx] = it
+                ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                sid = get_or_create_stream_id("oneplay", ext_id, "recording", it.get("title"))
+                _vod_cache_by_id[sid] = it
     except Exception as e:
         logger.error(f"Error resolving VOD cache for {sid_int}: {e}")
 
     return _vod_cache_by_id.get(sid_int)
+
+
+async def sync_oneplay_vod_catalog() -> None:
+    """Pre-populates and synchronizes Oneplay movies, series, and recordings in the background."""
+    if not (config.oneplay_enabled and config.is_oneplay_logged):
+        return
+    logger.info("Syncing Oneplay VOD catalog...")
+    try:
+        loop = asyncio.get_running_loop()
+
+        def _fetch_all():
+            res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
+            for it in (res_m.get("items") or []):
+                ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                sid = get_or_create_stream_id("oneplay", ext_id, "movie", it.get("title"))
+                _vod_cache_by_id[sid] = it
+
+            res_s = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
+            for it in (res_s.get("items") or []):
+                ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                sid = get_or_create_stream_id("oneplay", ext_id, "series", it.get("title"))
+                _series_cache_by_id[sid] = it
+                if it.get("title") == "Ulice":
+                    _series_cache_by_id[40011] = it
+                    _series_cache_by_id[40014] = it
+                    _series_cache_by_id[40482] = it
+
+            res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1, all_pages=True)
+            for it in (res_r.get("items") or []):
+                ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                sid = get_or_create_stream_id("oneplay", ext_id, "recording", it.get("title"))
+                _vod_cache_by_id[sid] = it
+
+        await loop.run_in_executor(None, _fetch_all)
+        logger.info(
+            f"Oneplay VOD catalog sync complete. Cached {len(_vod_cache_by_id)} VOD items and {len(_series_cache_by_id)} series."
+        )
+    except Exception as e:
+        logger.error(f"Error during Oneplay VOD catalog sync: {e}")
 
 
 async def _get_or_create_vod_session(sid_int: int) -> Dict[str, Any]:
@@ -398,6 +441,7 @@ async def player_api(
                 "epg_channel_id": f"{provider}:{cid}",
                 "added": "1600000000",
                 "category_id": cat_id,
+                "container_extension": "m3u8",
                 "custom_sid": "",
                 "tv_archive": 1 if ch.get("catchup") else 0,
                 "direct_source": "",
@@ -405,7 +449,7 @@ async def player_api(
             })
         return JSONResponse(content=output)
 
-    # 4. EPG Schedule
+    # 4. EPG Schedule (UTC standard for Xtream Codes v2)
     if action in ("get_simple_data_table", "get_short_epg"):
         if not stream_id:
             return JSONResponse(content={"epg_listings": []})
@@ -432,8 +476,8 @@ async def player_api(
                             "epg_id": str(p.get("id", "")),
                             "title": p.get("title", ""),
                             "lang": "cs",
-                            "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
-                            "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
+                            "start": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(t_start)),
+                            "end": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(t_stop)),
                             "description": p.get("description") or "",
                             "channel_id": str(target_cid),
                             "start_timestamp": t_start,
@@ -456,8 +500,8 @@ async def player_api(
                             "epg_id": str(p.get("id", "")),
                             "title": p.get("text", ""),
                             "lang": "cs",
-                            "start": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_start)),
-                            "end": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t_stop)),
+                            "start": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(t_start)),
+                            "end": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(t_stop)),
                             "description": p.get("description") or p.get("genre") or "",
                             "channel_id": str(target_cid),
                             "start_timestamp": t_start,
@@ -494,7 +538,9 @@ async def player_api(
             idx = 0
             for it in items:
                 idx += 1
-                sid = (31000 if cat_filter == "3001" else 30000) + idx
+                ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                c_type = "recording" if cat_filter == "3001" else "movie"
+                sid = get_or_create_stream_id("oneplay", ext_id, c_type, it.get("title"))
                 _vod_cache_by_id[sid] = it
                 title = it.get("title", "")
                 if it.get("is_drm"):
@@ -527,15 +573,15 @@ async def player_api(
         if not item and config.oneplay_enabled and config.is_oneplay_logged:
             try:
                 res_m = provider_manager.oneplay.get_vod_items(category="movies", page=1, all_pages=True)
-                idx = 0
                 for it in (res_m.get("items") or []):
-                    idx += 1
-                    _vod_cache_by_id[30000 + idx] = it
+                    ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                    sid = get_or_create_stream_id("oneplay", ext_id, "movie", it.get("title"))
+                    _vod_cache_by_id[sid] = it
                 res_r = provider_manager.oneplay.get_vod_items(category="recordings", page=1)
-                idx = 0
                 for it in (res_r.get("items") or []):
-                    idx += 1
-                    _vod_cache_by_id[31000 + idx] = it
+                    ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                    sid = get_or_create_stream_id("oneplay", ext_id, "recording", it.get("title"))
+                    _vod_cache_by_id[sid] = it
                 item = _vod_cache_by_id.get(vid)
             except Exception as e:
                 logger.error(f"Error refreshing VOD cache for {vid}: {e}")
@@ -590,7 +636,8 @@ async def player_api(
                 idx = 0
                 for it in items:
                     idx += 1
-                    sid = 40000 + idx
+                    ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                    sid = get_or_create_stream_id("oneplay", ext_id, "series", it.get("title"))
                     _series_cache_by_id[sid] = it
                     series_out.append({
                         "num": idx,
@@ -611,6 +658,7 @@ async def player_api(
                 if ulice_item:
                     _series_cache_by_id[40011] = ulice_item
                     _series_cache_by_id[40014] = ulice_item
+                    _series_cache_by_id[40482] = ulice_item
             except Exception as e:
                 logger.error(f"Error fetching series in get_series: {e}")
         return JSONResponse(content=series_out)
@@ -636,16 +684,17 @@ async def player_api(
             try:
                 res = provider_manager.oneplay.get_vod_items(category="series", page=1, all_pages=True)
                 items = res.get("items") or []
-                idx = 0
                 for it in items:
-                    idx += 1
-                    _series_cache_by_id[40000 + idx] = it
+                    ext_id = str(it.get("id") or it.get("payload", {}).get("contentId") or "")
+                    s_sid = get_or_create_stream_id("oneplay", ext_id, "series", it.get("title"))
+                    _series_cache_by_id[s_sid] = it
                 ulice_item = next((it for it in items if it.get("title") == "Ulice"), None)
                 if ulice_item:
                     _series_cache_by_id[40011] = ulice_item
                     _series_cache_by_id[40014] = ulice_item
+                    _series_cache_by_id[40482] = ulice_item
                 s_item = _series_cache_by_id.get(sid)
-                if not s_item and sid in (40011, 40014):
+                if not s_item and sid in (40011, 40014, 40482):
                     s_item = ulice_item
             except Exception as e:
                 logger.error(f"Error refreshing series cache in get_series_info for {sid}: {e}")
@@ -813,7 +862,15 @@ def xtream_live_stream(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid stream ID.")
 
+    url_path = request.url.path.lower()
     base_url = get_effective_base_url(request)
+
+    # Redirect (302) direct .ts or extensionless requests to .m3u8 for HLS-capable players
+    if url_path.endswith(".ts") or not url_path.endswith(".m3u8"):
+        target_url = re.sub(r"\.ts($|\?)", r".m3u8\1", str(request.url))
+        if not target_url.endswith(".m3u8") and "?" not in target_url:
+            target_url += ".m3u8"
+        return RedirectResponse(url=target_url, status_code=302)
 
     # Oneplay streams are mapped to stream_id >= 10000
     if sid_int >= 10000:
@@ -890,7 +947,15 @@ def xtream_timeshift_stream(
 
     start_val = start or request.query_params.get("start")
     target_ts = _parse_timeshift_timestamp(start_val) if start_val else None
+    url_path = request.url.path.lower()
     base_url = get_effective_base_url(request)
+
+    # Redirect (302) direct .ts or extensionless requests to .m3u8 for HLS-capable players
+    if url_path.endswith(".ts") or not url_path.endswith(".m3u8"):
+        target_url = re.sub(r"\.ts($|\?)", r".m3u8\1", str(request.url))
+        if not target_url.endswith(".m3u8") and "?" not in target_url:
+            target_url += ".m3u8"
+        return RedirectResponse(url=target_url, status_code=302)
 
     # Oneplay streams are mapped to stream_id >= 10000
     if sid_int >= 10000:
@@ -1005,8 +1070,7 @@ async def xtream_movie_stream(
     if request.method == "HEAD":
         head_headers = {
             "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Content-Disposition": f'inline; filename="vod_{sid_int}.{file_ext}"',
+            "Cache-Control": "public, max-age=3600",
             "Accept-Ranges": "none",
             "Content-Length": str(total_bytes),
         }
@@ -1015,9 +1079,17 @@ async def xtream_movie_stream(
             head_headers["Content-Duration"] = str(int(duration_sec))
         return Response(
             status_code=200,
-            media_type=media_type,
+            media_type="application/vnd.apple.mpegurl" if is_m3u8 else media_type,
             headers=head_headers
         )
+
+    # Redirect external players requesting .ts or .mp4 to full-featured HLS (.m3u8)
+    base_url = get_effective_base_url(request)
+    is_series = "/series/" in request.url.path
+    route_prefix = "series" if is_series else "movie"
+    if not is_m3u8 and not request.query_params.get("raw"):
+        target_m3u8 = f"{base_url}/{route_prefix}/{username}/{password}/{sid_int}.m3u8"
+        return RedirectResponse(url=target_m3u8, status_code=302)
 
     if not item or not item.get("payload"):
         raise HTTPException(status_code=404, detail="VOD item not found or expired.")
@@ -1032,7 +1104,6 @@ async def xtream_movie_stream(
 
     # 1. Clear HLS stream -> manifest rewrite with Oneplay CDN tokens
     if manifest_type == "hls" and not is_drm:
-        base_url = get_effective_base_url(request)
         rewritten = provider_manager.oneplay.rewrite_manifest(stream_url, base_url, start_at_begin=False)
         return Response(
             content=rewritten,
@@ -1043,19 +1114,19 @@ async def xtream_movie_stream(
     # 2. HLS Master Playlist for DASH/DRM VOD with multi-audio, subtitles, and quality selection
     if is_m3u8:
         session = await _get_or_create_vod_session(sid_int)
-        base_url = get_effective_base_url(request)
 
         lines = [
             "#EXTM3U",
             "#EXT-X-VERSION:4",
         ]
 
-        # Audio tracks: Muxed into media segments (RFC 8216)
+        # Audio tracks: Separate audio renditions with URI (RFC 8216)
         audio_tracks = session.get("audio_tracks") or []
         for idx, a in enumerate(audio_tracks):
             is_default = "YES" if idx == 0 else "NO"
+            audio_m3u8_url = f"{base_url}/vod_audio/{username}/{password}/{sid_int}/{idx}.m3u8"
             lines.append(
-                f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES'
+                f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES,URI="{audio_m3u8_url}"'
             )
 
         # Subtitle tracks
@@ -1251,6 +1322,140 @@ async def xtream_vod_segment(
 
     cmd.extend([
         "-frames:v", str(frames_count),
+        "-output_ts_offset", str(start_sec),
+        "-f", "mpegts",
+        "pipe:1"
+    ])
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, _ = await proc.communicate()
+    return Response(
+        content=stdout,
+        media_type="video/mp2t",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=86400"
+        }
+    )
+
+
+@router.api_route("/vod_audio/{username}/{password}/{stream_id}/{audio_idx}.m3u8", methods=["GET", "HEAD"])
+async def xtream_vod_audio_m3u8(
+    request: Request,
+    username: str,
+    password: str,
+    stream_id: str,
+    audio_idx: int
+):
+    """Returns HLS audio playlist for a specific audio rendition."""
+    if not validate_xtream_user(username, password):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
+    try:
+        sid_int = int(clean_id(stream_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid stream ID.")
+
+    session = await _get_or_create_vod_session(sid_int)
+    base_url = get_effective_base_url(request)
+
+    seg_duration = 6.0
+    total_dur = session.get("duration", 0.0)
+    if total_dur <= 0:
+        item = _vod_cache_by_id.get(sid_int) or {}
+        total_dur = float(item.get("duration") or 7200.0)
+
+    num_segs = max(1, int(math.ceil(total_dur / seg_duration)))
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        f"#EXT-X-TARGETDURATION:{int(seg_duration) + 1}",
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+    ]
+    for seg_idx in range(num_segs):
+        cur_start = seg_idx * seg_duration
+        cur_dur = min(seg_duration, total_dur - cur_start)
+        lines.append(f"#EXTINF:{cur_dur:.3f},")
+        lines.append(f"{base_url}/vod_audio_segment/{username}/{password}/{sid_int}/{audio_idx}/{int(cur_start)}.ts")
+    lines.append("#EXT-X-ENDLIST\n")
+
+    return Response(
+        content="\n".join(lines),
+        media_type="application/vnd.apple.mpegurl",
+        headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600"}
+    )
+
+
+@router.api_route("/vod_audio_segment/{username}/{password}/{stream_id}/{audio_idx}/{start_sec}.ts", methods=["GET", "HEAD"])
+async def xtream_vod_audio_segment(
+    request: Request,
+    username: str,
+    password: str,
+    stream_id: str,
+    audio_idx: int,
+    start_sec: int
+):
+    """Generates an individual 6-second MPEG-TS audio segment for a specific language track."""
+    if not validate_xtream_user(username, password):
+        raise HTTPException(status_code=401, detail="Invalid Xtream credentials.")
+
+    if request.method == "HEAD":
+        return Response(
+            status_code=200,
+            media_type="video/mp2t",
+            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"}
+        )
+
+    try:
+        sid_int = int(clean_id(stream_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid stream ID.")
+
+    session = await _get_or_create_vod_session(sid_int)
+    ffmpeg_bin = find_ffmpeg_binary()
+    if not ffmpeg_bin:
+        raise HTTPException(status_code=500, detail="FFmpeg binary not found.")
+
+    mpd_path = session.get("mpd_path")
+    seg_duration = 6.0
+    total_dur = session.get("duration", 0.0)
+    cur_dur = seg_duration
+    if total_dur > 0:
+        cur_dur = min(seg_duration, max(0.1, total_dur - start_sec))
+
+    cmd = [
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel", "warning",
+    ]
+    if start_sec > 0:
+        seek_t = start_sec + 1.5
+        cmd.extend(["-ss", str(seek_t)])
+    cmd.extend([
+        "-allowed_extensions", "ALL",
+        "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
+        "-probesize", "10000000",
+        "-analyzeduration", "10000000",
+    ])
+    if session.get("keys"):
+        cmd.extend(["-cenc_decryption_key", session["keys"][0]])
+    cmd.extend([
+        "-i", mpd_path,
+        "-vn",
+        "-map", f"0:a:{audio_idx}?",
+        "-c:a", "copy",
+    ])
+    audio_tracks = session.get("audio_tracks") or []
+    if 0 <= audio_idx < len(audio_tracks):
+        lang = audio_tracks[audio_idx].get("lang") or "ces"
+        cmd.extend(["-metadata:s:a:0", f"language={lang}"])
+
+    cmd.extend([
+        "-t", f"{cur_dur:.3f}",
         "-output_ts_offset", str(start_sec),
         "-f", "mpegts",
         "pipe:1"

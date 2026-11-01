@@ -682,6 +682,8 @@ class OneplayProvider(BaseProvider):
         from_ts = now_ts - (days_back * 86400)
         to_ts = now_ts + (days_forward * 86400)
 
+        dt_from = datetime.fromtimestamp(from_ts, tz=timezone.utc)
+        dt_to = datetime.fromtimestamp(to_ts, tz=timezone.utc)
         post = {
             "payload": {
                 "criteria": {
@@ -689,8 +691,8 @@ class OneplayProvider(BaseProvider):
                     "viewport": {
                         "channelRange": {"from": 0, "to": 250},
                         "timeRange": {
-                            "from": datetime.fromtimestamp(from_ts).strftime("%Y-%m-%dT%H:%M:%S") + ".000Z",
-                            "to": datetime.fromtimestamp(to_ts).strftime("%Y-%m-%dT%H:%M:%S") + ".000Z",
+                            "from": dt_from.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                            "to": dt_to.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                         },
                         "schema": "EpgViewportAbsolute",
                     },
@@ -918,21 +920,21 @@ class OneplayProvider(BaseProvider):
                 for c in carousels:
                     items.extend(self._parse_tiles(c.get("tiles") or []))
             elif all_pages:
-                # Fast multithreaded fetch of full catalog across all pages from Category 25 (Filtr)
-                if category == "movies":
-                    items.extend(self._fetch_category_filtered_items("oneplay-2", token))
-                    items.extend(self._fetch_category_filtered_items("oneplay-6", token))
-                elif category == "series":
-                    items.extend(self._fetch_category_filtered_items("oneplay-4", token))
-                    items.extend(self._fetch_category_filtered_items("oneplay-6", token))
-
-                # Also fetch homepage featured carousels for any banners/curated tiles
+                # 1. Fetch homepage featured carousels for banners/curated tiles first (native Oneplay layout)
                 cat_id = "2" if category == "movies" else ("4" if category == "series" else ("8" if category == "recordings" else "1"))
                 res_cur = self.api.call_api("page.category.display", data={"payload": {"categoryId": str(cat_id)}}, token=token)
                 data_cur = res_cur.get("data") or res_cur.get("result", {}).get("data") or {}
                 blocks_cur = data_cur if isinstance(data_cur, list) else (data_cur.get("layout", {}).get("blocks") or [])
                 for c in self._find_all_carousels(blocks_cur):
                     items.extend(self._parse_tiles(c.get("tiles") or []))
+
+                # 2. Fast multithreaded fetch of full catalog across all pages from Category 25 (Filtr) in sorting-date-desc order
+                if category == "movies":
+                    items.extend(self._fetch_category_filtered_items("oneplay-2", token))
+                    items.extend(self._fetch_category_filtered_items("oneplay-6", token))
+                elif category == "series":
+                    items.extend(self._fetch_category_filtered_items("oneplay-4", token))
+                    items.extend(self._fetch_category_filtered_items("oneplay-6", token))
             elif page > 1 and category in ("movies", "series"):
                 # Fetch specific page from Category 25
                 cat_code = "oneplay-2" if category == "movies" else "oneplay-4"
@@ -1001,8 +1003,7 @@ class OneplayProvider(BaseProvider):
         else:
             filtered_items = unique_items
 
-        filtered_items.sort(key=lambda x: (x.get("title") or "", str(x.get("id") or "")))
-
+        # Preserve native Oneplay layout and date ordering (featured first, followed by newest release date)
         return {
             "items": filtered_items,
             "page": page,

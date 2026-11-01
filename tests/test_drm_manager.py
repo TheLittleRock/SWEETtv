@@ -133,7 +133,13 @@ def test_xtream_drm_movie_streaming():
 
         mock_get_mpd.return_value = MagicMock(status_code=200, text="<MPD></MPD>")
 
-        resp = client.get(f"/movie/sweettv/sweet/{test_sid}.ts")
+        # Test 302 redirect for TS URL
+        resp_redir = client.get(f"/movie/sweettv/sweet/{test_sid}.ts", follow_redirects=False)
+        assert resp_redir.status_code == 302
+        assert f"/movie/sweettv/sweet/{test_sid}.m3u8" in resp_redir.headers["location"]
+
+        # Test raw direct streaming when requested
+        resp = client.get(f"/movie/sweettv/sweet/{test_sid}.ts?raw=1")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "video/mp2t"
         assert resp.content == b"MPEGTS_MOCK_STREAM_BYTES"
