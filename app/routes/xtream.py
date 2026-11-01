@@ -1129,12 +1129,18 @@ async def xtream_movie_stream(
 
         # Audio tracks: Separate audio renditions with URI (RFC 8216)
         audio_tracks = session.get("audio_tracks") or []
+        has_multi_audio = len(audio_tracks) > 1
         for idx, a in enumerate(audio_tracks):
             is_default = "YES" if idx == 0 else "NO"
-            audio_m3u8_url = f"{base_url}/vod_audio/{username}/{password}/{sid_int}/{idx}.m3u8"
-            lines.append(
-                f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES,URI="{audio_m3u8_url}"'
-            )
+            if has_multi_audio:
+                audio_m3u8_url = f"{base_url}/vod_audio/{username}/{password}/{sid_int}/{idx}.m3u8"
+                lines.append(
+                    f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES,URI="{audio_m3u8_url}"'
+                )
+            else:
+                lines.append(
+                    f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT=YES,AUTOSELECT=YES'
+                )
 
         # Subtitle tracks
         sub_tracks = session.get("subtitle_tracks") or []
@@ -1438,20 +1444,16 @@ async def xtream_vod_audio_segment(
         ffmpeg_bin,
         "-hide_banner",
         "-loglevel", "warning",
-    ]
-    if start_sec > 0:
-        seek_t = start_sec + 1.5
-        cmd.extend(["-ss", str(seek_t)])
-    cmd.extend([
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
         "-probesize", "10000000",
         "-analyzeduration", "10000000",
-    ])
+    ]
     if session.get("keys"):
         cmd.extend(["-cenc_decryption_key", session["keys"][0]])
     cmd.extend([
         "-i", mpd_path,
+        "-ss", str(float(start_sec)),
         "-vn",
         "-map", f"0:a:{audio_idx}?",
         "-c:a", "copy",

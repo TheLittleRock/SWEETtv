@@ -100,6 +100,35 @@ def test_hls_audio_rendition_playlist(monkeypatch):
     assert f"/vod_audio_segment/admin/Stepan-2002/{test_sid}/1/6.ts" in a_text
     assert "#EXT-X-ENDLIST" in a_text
 
+    # 3. Verify that for single-audio titles, URI attribute is omitted so crawler uses embedded audio
+    single_audio_mpd = """<?xml version="1.0" encoding="utf-8"?>
+    <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" mediaPresentationDuration="PT120.000S">
+      <Period>
+        <AdaptationSet contentType="video" mimeType="video/mp4">
+          <Representation id="v1" bandwidth="6000000" width="1920" height="1080" />
+        </AdaptationSet>
+        <AdaptationSet contentType="audio" lang="ces" mimeType="audio/mp4">
+          <Representation id="a1" bandwidth="128000" />
+        </AdaptationSet>
+      </Period>
+    </MPD>"""
+    class MockRespSingle:
+        status_code = 200
+        text = single_audio_mpd
+    monkeypatch.setattr("requests.get", lambda *args, **kwargs: MockRespSingle())
+    test_sid_single = 30124
+    _vod_cache_by_id[test_sid_single] = {
+        "id": "movie.single",
+        "title": "Single Audio Movie",
+        "duration": 120,
+        "payload": {"contentId": "movie.single"}
+    }
+    resp_single = client.get(f"/movie/admin/Stepan-2002/{test_sid_single}.m3u8")
+    assert resp_single.status_code == 200
+    single_text = resp_single.text
+    assert 'NAME="Čeština",LANGUAGE="cs",DEFAULT=YES,AUTOSELECT=YES' in single_text
+    assert 'URI=' not in single_text  # NO URI attribute for single-audio stream!
+
 
 def test_external_players_302_redirects():
     """Verify .ts and .mp4 URLs issue 302 redirect to .m3u8 for full HLS scrubbing and compatibility."""
