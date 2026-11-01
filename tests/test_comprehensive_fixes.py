@@ -125,6 +125,15 @@ def test_external_players_302_redirects():
     assert resp_series.status_code == 302
     assert "/series/admin/Stepan-2002/40011002101.m3u8" in resp_series.headers["location"]
 
+    # 5. Verify HEAD requests also issue 302 redirects without 405 Method Not Allowed
+    resp_live_head = client.head("/live/admin/Stepan-2002/11002.ts", follow_redirects=False)
+    assert resp_live_head.status_code == 302
+    assert "/live/admin/Stepan-2002/11002.m3u8" in resp_live_head.headers["location"]
+
+    resp_time_head = client.head("/timeshift/admin/Stepan-2002/60/2026-11-01:12-00/11002.ts", follow_redirects=False)
+    assert resp_time_head.status_code == 302
+    assert "/timeshift/admin/Stepan-2002/60/2026-11-01:12-00/11002.m3u8" in resp_time_head.headers["location"]
+
 
 def test_epg_utc_timestamps_formatting(monkeypatch):
     """Verify EPG start/end strings are output in canonical UTC to prevent 1-hour shifts in clients."""

@@ -44,7 +44,7 @@ def get_effective_base_url(request: Request) -> str:
 
     host = request.headers.get("host")
     if host:
-        proto = "https" if request.url.scheme == "https" or request.headers.get("x-forwarded-ssl") == "on" else request.url.scheme
+        proto = "https" if request.url.scheme == "https" or request.headers.get("x-forwarded-ssl") == "on" or request.headers.get("x-forwarded-proto") == "https" else request.url.scheme
         return f"{proto}://{host}".rstrip("/")
 
     return str(request.base_url).rstrip("/")

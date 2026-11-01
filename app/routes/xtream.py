@@ -843,9 +843,9 @@ async def player_api(
     return JSONResponse(content={"message": f"Action {action} not handled", "status": "OK"})
 
 
-@router.get("/live/{username}/{password}/{stream_id}.m3u8", response_class=Response)
-@router.get("/live/{username}/{password}/{stream_id}.ts", response_class=Response)
-@router.get("/live/{username}/{password}/{stream_id}", response_class=Response)
+@router.api_route("/live/{username}/{password}/{stream_id}.m3u8", methods=["GET", "HEAD"], response_class=Response)
+@router.api_route("/live/{username}/{password}/{stream_id}.ts", methods=["GET", "HEAD"], response_class=Response)
+@router.api_route("/live/{username}/{password}/{stream_id}", methods=["GET", "HEAD"], response_class=Response)
 def xtream_live_stream(
     request: Request,
     username: str,
@@ -867,9 +867,9 @@ def xtream_live_stream(
 
     # Redirect (302) direct .ts or extensionless requests to .m3u8 for HLS-capable players
     if url_path.endswith(".ts") or not url_path.endswith(".m3u8"):
-        target_url = re.sub(r"\.ts($|\?)", r".m3u8\1", str(request.url))
-        if not target_url.endswith(".m3u8") and "?" not in target_url:
-            target_url += ".m3u8"
+        target_url = f"{base_url}/live/{username}/{password}/{sid_int}.m3u8"
+        if request.url.query:
+            target_url += f"?{request.url.query}"
         return RedirectResponse(url=target_url, status_code=302)
 
     # Oneplay streams are mapped to stream_id >= 10000
@@ -916,10 +916,10 @@ def xtream_live_stream(
     )
 
 
-@router.get("/timeshift/{username}/{password}/{duration}/{start}/{stream_id}.m3u8", response_class=Response)
-@router.get("/timeshift/{username}/{password}/{duration}/{start}/{stream_id}.ts", response_class=Response)
-@router.get("/timeshift/{username}/{password}/{duration}/{start}/{stream_id}", response_class=Response)
-@router.get("/streaming/timeshift.php", response_class=Response)
+@router.api_route("/timeshift/{username}/{password}/{duration}/{start}/{stream_id}.m3u8", methods=["GET", "HEAD"], response_class=Response)
+@router.api_route("/timeshift/{username}/{password}/{duration}/{start}/{stream_id}.ts", methods=["GET", "HEAD"], response_class=Response)
+@router.api_route("/timeshift/{username}/{password}/{duration}/{start}/{stream_id}", methods=["GET", "HEAD"], response_class=Response)
+@router.api_route("/streaming/timeshift.php", methods=["GET", "HEAD"], response_class=Response)
 def xtream_timeshift_stream(
     request: Request,
     username: Optional[str] = None,
@@ -952,9 +952,16 @@ def xtream_timeshift_stream(
 
     # Redirect (302) direct .ts or extensionless requests to .m3u8 for HLS-capable players
     if url_path.endswith(".ts") or not url_path.endswith(".m3u8"):
-        target_url = re.sub(r"\.ts($|\?)", r".m3u8\1", str(request.url))
-        if not target_url.endswith(".m3u8") and "?" not in target_url:
-            target_url += ".m3u8"
+        if "/timeshift/" in request.url.path and start and duration:
+            target_url = f"{base_url}/timeshift/{u}/{p}/{duration}/{start}/{sid_int}.m3u8"
+        else:
+            target_url = f"{base_url}/streaming/timeshift.php?stream={sid_int}"
+            if u and p:
+                target_url += f"&username={u}&password={p}"
+            if start_val:
+                target_url += f"&start={start_val}"
+            if duration:
+                target_url += f"&duration={duration}"
         return RedirectResponse(url=target_url, status_code=302)
 
     # Oneplay streams are mapped to stream_id >= 10000
