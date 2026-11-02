@@ -323,13 +323,21 @@ async def test_xtream_vod_segment_zero_omits_ss(monkeypatch):
     await xtream.xtream_vod_segment(mock_req, "admin", "admin", "12345", 0)
     cmd0 = captured_cmds[0]
     assert "-ss" not in cmd0, f"Expected no -ss for start_sec=0, got {cmd0}"
+    assert "-copyts" in cmd0
+    assert "-output_ts_offset" not in cmd0
+    assert "-muxdelay" in cmd0
+    assert cmd0[cmd0.index("-muxdelay") + 1] == "0"
 
     # Segment 1: start_sec = 6
     await xtream.xtream_vod_segment(mock_req, "admin", "admin", "12345", 6)
     cmd1 = captured_cmds[1]
     assert "-ss" in cmd1
     ss_idx = cmd1.index("-ss")
-    assert cmd1[ss_idx + 1] in ("6", "6.0")
+    assert cmd1[ss_idx + 1] in ("7.5", "7.500")
+    assert "-copyts" in cmd1
+    assert "-output_ts_offset" not in cmd1
+    assert "-muxdelay" in cmd1
+    assert cmd1[cmd1.index("-muxdelay") + 1] == "0"
 
 
 def test_resolve_vod_item_ulice_alias_and_targeted_season(monkeypatch):

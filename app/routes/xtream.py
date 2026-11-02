@@ -1330,9 +1330,10 @@ async def xtream_vod_segment(
         "-loglevel", "warning",
     ]
     if start_sec > 0:
-        seek_t = start_sec
+        seek_t = start_sec + 1.5
         cmd.extend(["-ss", str(seek_t)])
     cmd.extend([
+        "-copyts",
         "-allowed_extensions", "ALL",
         "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
         "-probesize", "10000000",
@@ -1355,7 +1356,6 @@ async def xtream_vod_segment(
 
     cmd.extend([
         "-frames:v", str(frames_count),
-        "-output_ts_offset", str(start_sec),
         "-muxdelay", "0",
         "-f", "mpegts",
         "pipe:1"

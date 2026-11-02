@@ -509,6 +509,7 @@ async def ffmpeg_stream_generator(
         ])
     else:
         cmd.extend([
+            "-muxdelay", "0",
             "-f", "mpegts",
             "pipe:1"
         ])
