@@ -81,7 +81,7 @@ class AudioCacheManager:
         keys: Optional[List[str]],
         ffmpeg_bin: str
     ) -> None:
-        tmp_file = os.path.join(self.cache_dir, f"{key}.tmp")
+        tmp_file = os.path.join(self.cache_dir, f"{key}.tmp.aac")
         final_file = self.get_cache_file_path(sid, audio_idx)
         event = self._events.get(key)
 
@@ -101,6 +101,7 @@ class AudioCacheManager:
                 "-vn",
                 "-map", f"0:a:{audio_idx}?",
                 "-c:a", "copy",
+                "-f", "adts",
                 "-y", tmp_file
             ])
 
@@ -212,7 +213,7 @@ class AudioCacheManager:
                     continue
 
                 # Remove abandoned tmp files older than 10 minutes
-                if fname.endswith(".tmp") and (now - st.st_mtime > 600):
+                if (fname.endswith(".tmp") or fname.endswith(".tmp.aac")) and (now - st.st_mtime > 600):
                     try:
                         os.remove(fpath)
                     except Exception:
