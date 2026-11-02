@@ -130,6 +130,18 @@ def test_hls_audio_rendition_playlist(monkeypatch):
     assert 'URI=' not in single_text  # NO URI attribute for single-audio stream!
 
 
+    # 4. Verify that for Crawler downloader (xtream-tui), URI attribute is omitted even for multi-audio
+    resp_crawler = client.get(
+        f"/movie/admin/Stepan-2002/{test_sid}.m3u8",
+        headers={"User-Agent": "Mozilla/5.0 (compatible; xtream-tui)"}
+    )
+    assert resp_crawler.status_code == 200
+    crawler_text = resp_crawler.text
+    assert 'NAME="Čeština",LANGUAGE="cs",DEFAULT=YES,AUTOSELECT=YES' in crawler_text
+    assert 'NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES' in crawler_text
+    assert 'URI=' not in crawler_text  # NO URI attribute for Crawler downloader!
+
+
 def test_external_players_302_redirects():
     """Verify .ts and .mp4 URLs issue 302 redirect to .m3u8 for full HLS scrubbing and compatibility."""
     client = TestClient(app)

@@ -186,6 +186,7 @@ class AudioCacheManager:
             "-metadata:s:a:0", f"language={lang}",
             "-t", f"{duration_sec:.3f}",
             "-output_ts_offset", str(start_sec),
+            "-muxdelay", "0",
             "-f", "mpegts",
             "pipe:1"
         ]

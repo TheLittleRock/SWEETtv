@@ -75,3 +75,37 @@ async def test_audio_cache_deduplication(temp_cache_dir, monkeypatch):
     await asyncio.sleep(0.01)
     assert call_count == 1
     await list(mgr._tasks.values())[0]
+
+
+@pytest.mark.asyncio
+async def test_audio_cache_get_segment_muxdelay(temp_cache_dir, monkeypatch):
+    mgr = AudioCacheManager(cache_dir=temp_cache_dir)
+    target_file = mgr.get_cache_file_path(sid=999, audio_idx=0)
+    with open(target_file, "wb") as f:
+        f.write(b"X" * 2000)
+
+    captured_cmd = []
+    async def mock_exec(*cmd, **kwargs):
+        nonlocal captured_cmd
+        captured_cmd = list(cmd)
+        class MockProc:
+            returncode = 0
+            async def communicate(self):
+                return b"fake_ts_segment", b""
+        return MockProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", mock_exec)
+
+    res = await mgr.get_segment(
+        sid=999,
+        audio_idx=0,
+        start_sec=6,
+        duration_sec=6.0,
+        ffmpeg_bin="ffmpeg",
+        lang="ces"
+    )
+    assert res == b"fake_ts_segment"
+    assert "-muxdelay" in captured_cmd
+    idx = captured_cmd.index("-muxdelay")
+    assert captured_cmd[idx + 1] == "0"
+

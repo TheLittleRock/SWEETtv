@@ -1129,12 +1129,22 @@ async def xtream_movie_stream(
         ]
 
         # Audio tracks: Separate audio renditions with URI (RFC 8216)
+        user_agent = (request.headers.get("user-agent") or "").lower()
+        is_crawler_downloader = (
+            "xtream-tui" in user_agent
+            or "crawler" in user_agent
+            or request.query_params.get("embedded") == "1"
+            or request.query_params.get("crawler") == "1"
+        )
         audio_tracks = session.get("audio_tracks") or []
         has_multi_audio = len(audio_tracks) > 1
         ffmpeg_bin = find_ffmpeg_binary()
         for idx, a in enumerate(audio_tracks):
             is_default = "YES" if idx == 0 else "NO"
-            if has_multi_audio:
+            # For Crawler downloader, omit external URI attribute so Crawler downloads
+            # only the muxed video.bin in 10-15s with embedded bit-exact multi-audio.
+            # For browser and web players, provide discrete audio renditions with URI.
+            if has_multi_audio and not is_crawler_downloader:
                 audio_m3u8_url = f"{base_url}/vod_audio/{username}/{password}/{sid_int}/{idx}.m3u8"
                 lines.append(
                     f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES,URI="{audio_m3u8_url}"'
@@ -1149,7 +1159,7 @@ async def xtream_movie_stream(
                     )
             else:
                 lines.append(
-                    f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT=YES,AUTOSELECT=YES'
+                    f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="{a["name"]}",LANGUAGE="{a["iso639_1"]}",DEFAULT={is_default},AUTOSELECT=YES'
                 )
 
         # Subtitle tracks
@@ -1346,6 +1356,7 @@ async def xtream_vod_segment(
     cmd.extend([
         "-frames:v", str(frames_count),
         "-output_ts_offset", str(start_sec),
+        "-muxdelay", "0",
         "-f", "mpegts",
         "pipe:1"
     ])
@@ -1518,6 +1529,7 @@ async def xtream_vod_audio_segment(
     cmd.extend([
         "-t", f"{cur_dur:.3f}",
         "-output_ts_offset", str(start_sec),
+        "-muxdelay", "0",
         "-f", "mpegts",
         "pipe:1"
     ])
