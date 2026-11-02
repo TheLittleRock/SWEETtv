@@ -109,16 +109,16 @@ class AudioCacheManager:
             logger.info(f"Starting audio pre-cache for {key}: {mpd_path}")
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
             )
             try:
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+                await asyncio.wait_for(proc.wait(), timeout=120.0)
             except asyncio.TimeoutError:
                 logger.error(f"Audio pre-cache timed out after 120s for {key}, killing process...")
                 try:
                     proc.kill()
-                    await proc.communicate()
+                    await proc.wait()
                 except Exception:
                     pass
                 if os.path.exists(tmp_file):
@@ -132,8 +132,7 @@ class AudioCacheManager:
                 os.replace(tmp_file, final_file)
                 logger.info(f"Audio pre-cache complete for {key} ({os.path.getsize(final_file)} bytes)")
             else:
-                err_msg = stderr.decode(errors="ignore")[:300] if stderr else "Unknown error"
-                logger.error(f"Audio pre-cache failed for {key} (rc={proc.returncode}): {err_msg}")
+                logger.error(f"Audio pre-cache failed for {key} (rc={proc.returncode})")
                 if os.path.exists(tmp_file):
                     try:
                         os.remove(tmp_file)
