@@ -329,7 +329,7 @@ async def test_xtream_vod_segment_zero_omits_ss(monkeypatch):
     cmd1 = captured_cmds[1]
     assert "-ss" in cmd1
     ss_idx = cmd1.index("-ss")
-    assert cmd1[ss_idx + 1] == "7.5"
+    assert cmd1[ss_idx + 1] in ("6", "6.0")
 
 
 def test_resolve_vod_item_ulice_alias_and_targeted_season(monkeypatch):

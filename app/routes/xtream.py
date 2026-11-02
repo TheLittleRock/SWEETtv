@@ -1330,7 +1330,7 @@ async def xtream_vod_segment(
         "-loglevel", "warning",
     ]
     if start_sec > 0:
-        seek_t = start_sec + 1.5
+        seek_t = start_sec
         cmd.extend(["-ss", str(seek_t)])
     cmd.extend([
         "-allowed_extensions", "ALL",
