@@ -91,6 +91,7 @@ class AudioCacheManager:
                 ffmpeg_bin,
                 "-hide_banner",
                 "-loglevel", "error",
+                "-rw_timeout", "15000000",
                 "-allowed_extensions", "ALL",
                 "-protocol_whitelist", "file,crypto,data,https,tls,tcp",
             ]
@@ -111,7 +112,21 @@ class AudioCacheManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            _, stderr = await proc.communicate()
+            try:
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+            except asyncio.TimeoutError:
+                logger.error(f"Audio pre-cache timed out after 120s for {key}, killing process...")
+                try:
+                    proc.kill()
+                    await proc.communicate()
+                except Exception:
+                    pass
+                if os.path.exists(tmp_file):
+                    try:
+                        os.remove(tmp_file)
+                    except Exception:
+                        pass
+                return
 
             if proc.returncode == 0 and os.path.exists(tmp_file) and os.path.getsize(tmp_file) > 1000:
                 os.replace(tmp_file, final_file)
@@ -182,7 +197,7 @@ class AudioCacheManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, _ = await proc.communicate()
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
             if proc.returncode == 0 and stdout:
                 try:
                     os.utime(final_file, None)
